@@ -22,6 +22,8 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -240,7 +242,12 @@ private fun CameraViewContent(
     // CameraX instance references
     var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
     var camera: Camera? by remember { mutableStateOf(null) }
-    var previewView: PreviewView? by remember { mutableStateOf(null) }
+    val previewView = remember(context) {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+        }
+    }
 
     // Helper to safely set zoom ratio with optional lens feedback
     val setZoom: (Float, String?) -> Unit = { targetRatio, lensFeedback ->
@@ -290,7 +297,7 @@ private fun CameraViewContent(
                 val preview = Preview.Builder()
                     .setResolutionSelector(previewResolutionSelector)
                     .build().also {
-                        it.surfaceProvider = previewView?.surfaceProvider
+                        it.surfaceProvider = previewView.surfaceProvider
                     }
 
                 val captureFlashMode = when (flashMode) {
@@ -299,7 +306,7 @@ private fun CameraViewContent(
                     CameraFlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
                 }
 
-                // Force CameraX to select the MAXIMUM physical sensor resolution supported
+                // Select highest available physical resolution matching the selected aspect ratio
                 val captureResolutionSelector = ResolutionSelector.Builder()
                     .setAspectRatioStrategy(aspectRatioStrategy)
                     .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
@@ -311,84 +318,96 @@ private fun CameraViewContent(
                     .setJpegQuality(100)
                     .setFlashMode(captureFlashMode)
 
-                // Request hardware Image Signal Processor (ISP) high quality edge & noise reduction
+                // Safe hardware ISP enhancements (OIS, chromatic aberration correction, distortion correction)
+                // Note: Auto White Balance and Tonemapping are managed by CameraX & ISP to match viewfinder vibrancy
                 val camera2Extender = Camera2Interop.Extender(captureBuilder)
                 camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.EDGE_MODE,
-                    CaptureRequest.EDGE_MODE_HIGH_QUALITY
+                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
+                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON
                 )
                 camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.NOISE_REDUCTION_MODE,
-                    CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
+                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
+                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY
                 )
                 camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.COLOR_CORRECTION_MODE,
-                    CaptureRequest.COLOR_CORRECTION_MODE_HIGH_QUALITY
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.TONEMAP_MODE,
-                    CaptureRequest.TONEMAP_MODE_HIGH_QUALITY
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.HOT_PIXEL_MODE,
-                    CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.SHADING_MODE,
-                    CaptureRequest.SHADING_MODE_HIGH_QUALITY
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.CONTROL_AE_ANTIBANDING_MODE,
-                    CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO
+                    CaptureRequest.DISTORTION_CORRECTION_MODE,
+                    CaptureRequest.DISTORTION_CORRECTION_MODE_HIGH_QUALITY
                 )
 
                 val capture = captureBuilder.build()
 
-                val cameraSelector = CameraSelector.Builder()
+                val baseSelector = CameraSelector.Builder()
                     .requireLensFacing(lensFacing)
                     .build()
 
-                val boundCamera = cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    preview,
-                    capture
-                )
+                // Check and apply OEM CameraX Extensions (Auto HDR / Night / Scene Optimization)
+                val extensionsManagerFuture = ExtensionsManager.getInstanceAsync(context, cameraProvider)
+                extensionsManagerFuture.addListener({
+                    try {
+                        val extensionsManager = extensionsManagerFuture.get()
+                        val cameraSelector = when {
+                            extensionsManager.isExtensionAvailable(baseSelector, ExtensionMode.AUTO) -> {
+                                extensionsManager.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.AUTO)
+                            }
+                            extensionsManager.isExtensionAvailable(baseSelector, ExtensionMode.HDR) -> {
+                                extensionsManager.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.HDR)
+                            }
+                            else -> baseSelector
+                        }
 
-                camera = boundCamera
-                imageCapture = capture
+                        val boundCamera = cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            capture
+                        )
 
-                // Observe Zoom State
-                boundCamera.cameraInfo.zoomState.observe(lifecycleOwner) { zoomState ->
-                    if (zoomState != null) {
-                        minZoomRatio = zoomState.minZoomRatio
-                        maxZoomRatio = zoomState.maxZoomRatio
-                        currentZoomRatio = zoomState.zoomRatio
+                        camera = boundCamera
+                        imageCapture = capture
+
+                        // Observe Zoom State
+                        boundCamera.cameraInfo.zoomState.observe(lifecycleOwner) { zoomState ->
+                            if (zoomState != null) {
+                                minZoomRatio = zoomState.minZoomRatio
+                                maxZoomRatio = zoomState.maxZoomRatio
+                                currentZoomRatio = zoomState.zoomRatio
+                            }
+                        }
+
+                        // Query Exposure State
+                        val expState = boundCamera.cameraInfo.exposureState
+                        isExposureSupported = expState.isExposureCompensationSupported
+                        if (expState.isExposureCompensationSupported) {
+                            minExposureIndex = expState.exposureCompensationRange.lower
+                            maxExposureIndex = expState.exposureCompensationRange.upper
+                            exposureIndex = expState.exposureCompensationIndex
+                            val num = expState.exposureCompensationStep.numerator.toFloat()
+                            val den = expState.exposureCompensationStep.denominator.toFloat().coerceAtLeast(1f)
+                            exposureStep = num / den
+                        } else {
+                            minExposureIndex = -4
+                            maxExposureIndex = 4
+                            exposureIndex = 0
+                            exposureStep = 0.5f
+                        }
+                    } catch (extExc: Exception) {
+                        Log.w("CameraCaptureScreen", "Extensions binding failed, falling back to base selector", extExc)
+                        try {
+                            val boundCamera = cameraProvider.bindToLifecycle(
+                                lifecycleOwner,
+                                baseSelector,
+                                preview,
+                                capture
+                            )
+                            camera = boundCamera
+                            imageCapture = capture
+                        } catch (bindExc: Exception) {
+                            Log.e("CameraCaptureScreen", "Fallback binding failed", bindExc)
+                        }
                     }
-                }
-
-                // Query Exposure State
-                val expState = boundCamera.cameraInfo.exposureState
-                isExposureSupported = expState.isExposureCompensationSupported
-                if (expState.isExposureCompensationSupported) {
-                    minExposureIndex = expState.exposureCompensationRange.lower
-                    maxExposureIndex = expState.exposureCompensationRange.upper
-                    exposureIndex = expState.exposureCompensationIndex
-                    val num = expState.exposureCompensationStep.numerator.toFloat()
-                    val den = expState.exposureCompensationStep.denominator.toFloat().coerceAtLeast(1f)
-                    exposureStep = num / den
-                } else {
-                    minExposureIndex = -4
-                    maxExposureIndex = 4
-                    exposureIndex = 0
-                    exposureStep = 0.5f
-                }
+                }, ContextCompat.getMainExecutor(context))
             } catch (exc: Exception) {
-                Log.e("CameraCaptureScreen", "Use case binding failed", exc)
+                Log.e("CameraCaptureScreen", "Camera setup failed", exc)
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -413,12 +432,7 @@ private fun CameraViewContent(
             ) {
                 // CameraX Preview Layer with Touch-to-Focus (Front & Rear) and Pinch-to-Zoom
                 AndroidView(
-                    factory = { ctx ->
-                        PreviewView(ctx).apply {
-                            this.scaleType = PreviewView.ScaleType.FILL_CENTER
-                            previewView = this
-                        }
-                    },
+                    factory = { previewView },
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(lensFacing, detectedLenses) {
@@ -436,7 +450,7 @@ private fun CameraViewContent(
                                     isFocusLocked = null
                                     setExposure(0)
                                     dragAccumulator = 0f
-                                    val pView = previewView ?: return@detectTapGestures
+                                    val pView = previewView
                                     val activeCam = camera ?: return@detectTapGestures
 
                                     // Trigger CameraX tap-to-focus and tap-to-expose via CameraFocusHelper
@@ -1389,6 +1403,11 @@ private fun takePhotoAndSaveToDcim(
                                     // Save at 100% maximum JPEG quality
                                     squareBitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
                                 }
+                                squareBitmap.recycle()
+                                if (transformedBitmap != originalBitmap && transformedBitmap != squareBitmap) {
+                                    transformedBitmap.recycle()
+                                }
+                                originalBitmap.recycle()
 
                                 // Preserve EXIF tags from original capture into the cropped image
                                 try {

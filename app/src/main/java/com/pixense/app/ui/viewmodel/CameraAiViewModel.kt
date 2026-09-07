@@ -158,8 +158,8 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
             Pager(
                 config = PagingConfig(
                     pageSize = 20,
-                    enablePlaceholders = false,
-                    prefetchDistance = 5,
+                    enablePlaceholders = true,
+                    prefetchDistance = 10,
                     initialLoadSize = 20
                 ),
                 pagingSourceFactory = { DcimPagingSource(repository) }

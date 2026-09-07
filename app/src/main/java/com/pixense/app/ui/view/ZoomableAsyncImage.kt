@@ -1,5 +1,6 @@
 package com.pixense.app.ui.view
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,8 @@ fun ZoomableAsyncImage(
                 .size(Size.ORIGINAL)
                 .precision(Precision.EXACT)
                 .crossfade(true)
+                .allowRgb565(false)
+                .bitmapConfig(Bitmap.Config.ARGB_8888)
                 .build()
         }
     }
