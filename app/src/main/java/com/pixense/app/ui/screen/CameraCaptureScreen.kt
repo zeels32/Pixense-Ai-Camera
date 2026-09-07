@@ -682,12 +682,12 @@ private fun CameraViewContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
+                        /*Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Studio",
                             tint = Color.White,
                             modifier = Modifier.size(16.dp)
-                        )
+                        )*/
                         Text(
                             text = "Studio",
                             color = Color.White,
