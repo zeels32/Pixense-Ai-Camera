@@ -876,9 +876,15 @@ fun StudioWorkspaceContent(
             // When scrolling, Paging 3 auto-loads next set of photos via LazyPagingItems
             items(
                 count = totalLoaded,
-                key = { index -> dcimLazyPagingItems.peek(index)?.id ?: index }
+                key = { index -> 
+                    if (index < dcimLazyPagingItems.itemCount) {
+                        dcimLazyPagingItems.peek(index)?.id ?: index
+                    } else {
+                        index
+                    }
+                }
             ) { index ->
-                val photo = dcimLazyPagingItems[index]
+                val photo = if (index < dcimLazyPagingItems.itemCount) dcimLazyPagingItems[index] else null
                 if (photo != null) {
                     DcimPhotoGridItem(
                         photo = photo,
@@ -1550,9 +1556,15 @@ fun DcimPhotoPagingGrid(
                 ) {
                     items(
                         count = totalLoaded,
-                        key = { index -> pagingItems.peek(index)?.id ?: index }
+                        key = { index -> 
+                            if (index < pagingItems.itemCount) {
+                                pagingItems.peek(index)?.id ?: index
+                            } else {
+                                index
+                            }
+                        }
                     ) { index ->
-                        val photo = pagingItems[index]
+                        val photo = if (index < pagingItems.itemCount) pagingItems[index] else null
                         if (photo != null) {
                             DcimPhotoGridItem(
                                 photo = photo,
