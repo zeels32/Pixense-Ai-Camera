@@ -132,11 +132,17 @@ import com.pixense.app.data.model.EnhancementQueueItem
 import com.pixense.app.data.model.EnhancementUiState
 import com.pixense.app.data.model.QueueItemStatus
 import com.pixense.app.data.model.ThemeMode
+import com.pixense.app.service.CameraCaptureService
 import com.pixense.app.ui.theme.BentoTheme
 import com.pixense.app.ui.viewmodel.CameraAiViewModel
 import com.pixense.app.ui.viewmodel.StudioTab
 import com.pixense.app.ui.screen.AiGalleryScreen
 import com.pixense.app.ui.view.ZoomableAsyncImage
+import com.pixense.app.util.PermissionUtils
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,7 +167,6 @@ fun CameraAiScreen(
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val previewPhoto by viewModel.previewPhoto.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-    val dcimLazyPagingItems = viewModel.dcimPagingFlow.collectAsLazyPagingItems()
 
     val quotaState by viewModel.quotaState.collectAsStateWithLifecycle()
     val pendingAdPhoto by viewModel.pendingAdEnhancementPhoto.collectAsStateWithLifecycle()
@@ -353,10 +358,9 @@ fun CameraAiScreen(
             ) {
                 when (currentTab) {
                     StudioTab.STUDIO -> {
-                        StudioWorkspaceContent(
+                        StudioTabScreen(
                             viewModel = viewModel,
                             latestPhoto = latestPhoto,
-                            dcimLazyPagingItems = dcimLazyPagingItems,
                             isServiceActive = isServiceActive,
                             pendingQueueCount = pendingQueueCount,
                             enhancementState = enhancementState,
@@ -526,6 +530,205 @@ fun StudioBottomNavigationBar(
             ),
             modifier = Modifier.testTag("nav_tab_settings")
         )
+    }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun StudioTabScreen(
+    viewModel: CameraAiViewModel,
+    latestPhoto: CameraPhoto?,
+    isServiceActive: Boolean,
+    pendingQueueCount: Int,
+    enhancementState: EnhancementUiState,
+    isShowingOriginal: Boolean,
+    isSaving: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val storagePermission = remember { PermissionUtils.getStoragePermission() }
+    val storagePermissionState = rememberPermissionState(permission = storagePermission)
+    var hasRequestedPermissionOnce by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(storagePermissionState.status.isGranted) {
+        if (storagePermissionState.status.isGranted) {
+            viewModel.refreshDcimPaging()
+            viewModel.refreshLatestPhoto()
+            if (viewModel.isAutoProcessEnabled.value) {
+                CameraCaptureService.start(context)
+            }
+        } else if (!hasRequestedPermissionOnce) {
+            hasRequestedPermissionOnce = true
+            storagePermissionState.launchPermissionRequest()
+        }
+    }
+
+    if (storagePermissionState.status.isGranted) {
+        val dcimLazyPagingItems = viewModel.dcimPagingFlow.collectAsLazyPagingItems()
+        StudioWorkspaceContent(
+            viewModel = viewModel,
+            latestPhoto = latestPhoto,
+            dcimLazyPagingItems = dcimLazyPagingItems,
+            isServiceActive = isServiceActive,
+            pendingQueueCount = pendingQueueCount,
+            enhancementState = enhancementState,
+            isShowingOriginal = isShowingOriginal,
+            isSaving = isSaving
+        )
+    } else {
+        StudioPermissionPlaceholderView(
+            onRequestPermission = { storagePermissionState.launchPermissionRequest() },
+            onOpenSettings = { PermissionUtils.openAppSettings(context) },
+            onOpenCamera = { viewModel.openCamera() },
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+fun StudioPermissionPlaceholderView(
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenCamera: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        BentoHeader()
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("studio_permission_card"),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = BentoTheme.colors.cardBg),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.border)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(BentoTheme.colors.purpleContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        tint = BentoTheme.colors.purplePrimary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Gallery Access Required",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BentoTheme.colors.textPrimary,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Grant permission to browse your device photos, preview them, and remaster them with Gemini AI.",
+                        fontSize = 14.sp,
+                        color = BentoTheme.colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = onRequestPermission,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BentoTheme.colors.purplePrimary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("studio_grant_permission_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Grant Permission",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenSettings,
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.border),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("studio_open_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = BentoTheme.colors.textPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Open Settings",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BentoTheme.colors.textPrimary
+                        )
+                    }
+
+                    TextButton(
+                        onClick = onOpenCamera,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("studio_open_camera_fallback_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = BentoTheme.colors.purplePrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Take a Photo Instead",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BentoTheme.colors.purplePrimary
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

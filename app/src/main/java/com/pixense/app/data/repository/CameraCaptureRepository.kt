@@ -18,6 +18,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import com.pixense.app.data.model.CameraPhoto
+import com.pixense.app.util.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,6 +88,9 @@ class CameraCaptureRepository(private val context: Context) {
     }
 
     suspend fun queryLatestCameraPhoto(): CameraPhoto? = withContext(Dispatchers.IO) {
+        if (!PermissionUtils.hasStoragePermission(context)) {
+            return@withContext null
+        }
         try {
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
@@ -167,6 +171,9 @@ class CameraCaptureRepository(private val context: Context) {
     }
 
     suspend fun queryAllDcimPhotos(): List<CameraPhoto> = withContext(Dispatchers.IO) {
+        if (!PermissionUtils.hasStoragePermission(context)) {
+            return@withContext emptyList()
+        }
         try {
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
@@ -233,6 +240,9 @@ class CameraCaptureRepository(private val context: Context) {
     }
 
     suspend fun queryDcimPhotosPaged(offset: Int, limit: Int): List<CameraPhoto> = withContext(Dispatchers.IO) {
+        if (!PermissionUtils.hasStoragePermission(context)) {
+            return@withContext emptyList()
+        }
         try {
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
