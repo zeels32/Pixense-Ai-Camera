@@ -107,6 +107,9 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString("app_theme_mode", mode.name).apply()
+        PixenseAnalytics.logEvent("theme_mode_changed", mapOf("mode" to mode.name))
+        PixenseAnalytics.setUserProperty("theme_mode", mode.name)
+        PixenseAnalytics.setCustomKey("theme_mode", mode.name)
     }
 
     val latestPhoto: StateFlow<CameraPhoto?> = repository.latestPhoto
@@ -192,14 +195,21 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun openCamera() {
         _isCameraOpen.value = true
+        PixenseAnalytics.logEvent("camera_opened")
+        PixenseAnalytics.logScreenView("CameraScreen")
+        PixenseAnalytics.setCustomKey("is_camera_open", true)
     }
 
     fun closeCamera() {
         _isCameraOpen.value = false
+        PixenseAnalytics.logEvent("camera_closed")
+        PixenseAnalytics.logScreenView("StudioScreen")
+        PixenseAnalytics.setCustomKey("is_camera_open", false)
     }
 
     fun onPhotoCaptured(uri: Uri) {
         // Do not close camera on captured photo, keep user in camera session
+        PixenseAnalytics.logEvent("camera_photo_captured", mapOf("auto_process" to isAutoProcessEnabled.value))
         viewModelScope.launch {
             val photo = repository.queryPhotoByUri(uri)
             if (photo != null) {
@@ -218,10 +228,12 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun openPhotoPreview(photo: CameraPhoto) {
         _previewPhoto.value = photo
+        PixenseAnalytics.logEvent("photo_preview_opened", mapOf("display_name" to photo.displayName))
     }
 
     fun closePhotoPreview() {
         _previewPhoto.value = null
+        PixenseAnalytics.logEvent("photo_preview_closed")
     }
 
     fun loadMoreDcimPhotos() {
@@ -243,6 +255,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun enhanceSpecificPhoto(photo: CameraPhoto) {
         repository.setLatestPhoto(photo)
+        PixenseAnalytics.logEvent("enhance_specific_photo_clicked", mapOf("display_name" to photo.displayName))
         if (quotaManager.hasAvailableEntitlement()) {
             queueManager.enqueue(photo, EnhancementPreset.AUTO, force = true)
             _saveStatusMessage.value = "Added \"${photo.displayName}\" to Gemini AI Queue!"
@@ -253,10 +266,16 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun selectTab(tab: StudioTab) {
         _currentTab.value = tab
+        PixenseAnalytics.logEvent("studio_tab_selected", mapOf("tab" to tab.name))
+        PixenseAnalytics.logScreenView("StudioTab_${tab.name}")
+        PixenseAnalytics.setCustomKey("current_studio_tab", tab.name)
     }
 
     fun setAutoProcessEnabled(enabled: Boolean) {
         queueManager.setAutoProcessEnabled(enabled)
+        PixenseAnalytics.logEvent("auto_process_toggled", mapOf("enabled" to enabled))
+        PixenseAnalytics.setUserProperty("auto_process_enabled", enabled.toString())
+        PixenseAnalytics.setCustomKey("auto_process_enabled", enabled)
         if (enabled) {
             CameraCaptureService.start(getApplication())
             repository.setServiceActive(true)
@@ -409,6 +428,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                 }
 
             } catch (e: GeminiApiException.NoInternet) {
+                PixenseAnalytics.recordException(e, "Gemini enhancement failed: No Internet")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
                 }
@@ -420,6 +440,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     e.message ?: "No internet connection. Please check your network to connect to Gemini AI."
                 )
             } catch (e: GeminiApiException.MissingApiKey) {
+                PixenseAnalytics.recordException(e, "Gemini enhancement failed: Missing API Key")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
                 }
@@ -431,6 +452,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     "Gemini API key is not configured. Please add GEMINI_API_KEY to your application secrets."
                 )
             } catch (e: GeminiApiException.QuotaExceeded) {
+                PixenseAnalytics.recordException(e, "Gemini enhancement failed: Quota Exceeded")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
                 }
@@ -442,6 +464,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     "Gemini API quota exceeded or rate limited. Please wait a few seconds and try again."
                 )
             } catch (e: GeminiApiException) {
+                PixenseAnalytics.recordException(e, "Gemini enhancement failed: GeminiApiException")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
                 }
@@ -453,6 +476,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     e.message ?: "Gemini AI enhancement failed. Please retry."
                 )
             } catch (e: Exception) {
+                PixenseAnalytics.recordException(e, "Gemini enhancement failed: Unexpected Exception")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
                 }
@@ -469,6 +493,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleShowOriginal(showOriginal: Boolean) {
         _isShowingOriginal.value = showOriginal
+        PixenseAnalytics.logEvent("photo_compare_toggled", mapOf("show_original" to showOriginal))
     }
 
     fun resetEnhancement() {
@@ -556,10 +581,12 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun deleteEnhancedPhoto(photo: EnhancedPhotoEntity) {
         viewModelScope.launch {
+            PixenseAnalytics.logEvent("photo_deleted", mapOf("type" to "enhanced", "scene" to photo.sceneType))
             try {
                 getApplication<Application>().contentResolver.delete(photo.enhancedUri, null, null)
             } catch (e: Exception) {
                 Log.e("CameraAiViewModel", "Failed to delete enhanced photo file: ${photo.enhancedUri}", e)
+                PixenseAnalytics.recordException(e, "Failed to delete enhanced photo contentResolver")
             }
             try {
                 if (photo.enhancedUri.scheme == "file" || photo.enhancedUri.path != null) {
@@ -577,6 +604,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     fun deleteDcimPhoto(photo: CameraPhoto) {
         viewModelScope.launch {
+            PixenseAnalytics.logEvent("photo_deleted", mapOf("type" to "dcim", "name" to photo.displayName))
             val success = repository.deletePhoto(photo)
             if (_previewPhoto.value?.id == photo.id || _previewPhoto.value?.uri == photo.uri) {
                 _previewPhoto.value = null

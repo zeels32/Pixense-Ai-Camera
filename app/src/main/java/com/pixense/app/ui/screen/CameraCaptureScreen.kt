@@ -13,6 +13,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import kotlin.OptIn
+import com.pixense.app.data.analytics.PixenseAnalytics
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -411,11 +412,13 @@ private fun CameraViewContent(
                             imageCapture = capture
                         } catch (bindExc: Exception) {
                             Log.e("CameraCaptureScreen", "Fallback binding failed", bindExc)
+                            PixenseAnalytics.recordException(bindExc, "Camera fallback binding failed")
                         }
                     }
                 }, ContextCompat.getMainExecutor(context))
             } catch (exc: Exception) {
                 Log.e("CameraCaptureScreen", "Camera setup failed", exc)
+                PixenseAnalytics.recordException(exc, "Camera setup failed")
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -706,11 +709,13 @@ private fun CameraViewContent(
                     // Flash Toggle Button
                     IconButton(
                         onClick = {
-                            flashMode = when (flashMode) {
+                            val nextMode = when (flashMode) {
                                 CameraFlashMode.AUTO -> CameraFlashMode.ON
                                 CameraFlashMode.ON -> CameraFlashMode.OFF
                                 CameraFlashMode.OFF -> CameraFlashMode.AUTO
                             }
+                            flashMode = nextMode
+                            PixenseAnalytics.logEvent("camera_flash_toggled", mapOf("mode" to nextMode.name))
                         },
                         modifier = Modifier
                             .size(38.dp)
@@ -751,7 +756,11 @@ private fun CameraViewContent(
 
                     // Grid Toggle Button
                     IconButton(
-                        onClick = { showGrid = !showGrid },
+                        onClick = {
+                            val nextGrid = !showGrid
+                            showGrid = nextGrid
+                            PixenseAnalytics.logEvent("camera_grid_toggled", mapOf("enabled" to nextGrid))
+                        },
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
@@ -769,7 +778,11 @@ private fun CameraViewContent(
                     // Selfie Mirror Toggle (ONLY visible when selfie / front camera is active)
                     if (isFrontCamera) {
                         IconButton(
-                            onClick = { mirrorSelfie = !mirrorSelfie },
+                            onClick = {
+                                val nextMirror = !mirrorSelfie
+                                mirrorSelfie = nextMirror
+                                PixenseAnalytics.logEvent("camera_mirror_toggled", mapOf("enabled" to nextMirror))
+                            },
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
@@ -811,6 +824,7 @@ private fun CameraViewContent(
                             onClick = {
                                 selectedAspectRatio = ratio
                                 showAspectRatioMenu = false
+                                PixenseAnalytics.logEvent("camera_aspect_ratio_changed", mapOf("ratio" to ratio.displayName))
                             },
                             shape = RoundedCornerShape(14.dp),
                             color = if (isSelected) BentoPurplePrimary else Color.White.copy(alpha = 0.12f),
@@ -976,11 +990,15 @@ private fun CameraViewContent(
                         .border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape)
                         .clickable {
                             lensRotationAngle += 180f
-                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                            val newFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                                 CameraSelector.LENS_FACING_FRONT
                             } else {
                                 CameraSelector.LENS_FACING_BACK
                             }
+                            lensFacing = newFacing
+                            val facingStr = if (newFacing == CameraSelector.LENS_FACING_FRONT) "FRONT" else "BACK"
+                            PixenseAnalytics.logEvent("camera_lens_flipped", mapOf("facing" to facingStr))
+                            PixenseAnalytics.setCustomKey("camera_facing", facingStr)
                             exposureIndex = 0
                         }
                         .testTag("camera_flip_lens"),
@@ -1448,6 +1466,7 @@ private fun takePhotoAndSaveToDcim(
                             }
                         } catch (e: Exception) {
                             Log.e("CameraCaptureScreen", "Error processing photo", e)
+                            PixenseAnalytics.recordException(e, "Square photo processing error")
                             withContext(Dispatchers.Main) {
                                 onError(ImageCaptureException(ImageCapture.ERROR_UNKNOWN, e.message ?: "Processing failed", e))
                             }
@@ -1456,6 +1475,7 @@ private fun takePhotoAndSaveToDcim(
                 }
 
                 override fun onError(exception: ImageCaptureException) {
+                    PixenseAnalytics.recordException(exception, "Square image capture error")
                     onError(exception)
                 }
             }
@@ -1505,6 +1525,7 @@ private fun takePhotoAndSaveToDcim(
             }
 
             override fun onError(exception: ImageCaptureException) {
+                PixenseAnalytics.recordException(exception, "Direct image capture error")
                 onError(exception)
             }
         }

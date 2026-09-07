@@ -79,6 +79,7 @@ class CameraCaptureService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register content observer", e)
+            PixenseAnalytics.recordException(e, "Failed to register content observer in CameraCaptureService")
         }
     }
 

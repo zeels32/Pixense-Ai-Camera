@@ -7,9 +7,17 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 
+import com.pixense.app.data.analytics.PixenseAnalytics
+
 class CameraAiApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        PixenseAnalytics.init(this)
+        PixenseAnalytics.setCustomKey("app_version_name", BuildConfig.VERSION_NAME)
+        PixenseAnalytics.setCustomKey("app_version_code", BuildConfig.VERSION_CODE)
+        PixenseAnalytics.setCustomKey("build_type", BuildConfig.BUILD_TYPE)
+        PixenseAnalytics.logBreadcrumb("CameraAiApplication onCreate completed")
+        PixenseAnalytics.logEvent("app_open")
         /*try {
             CameraCaptureService.start(this)
             Log.d("CameraAiApplication", "CameraCaptureService auto-started")

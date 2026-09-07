@@ -139,6 +139,7 @@ import com.pixense.app.ui.viewmodel.CameraAiViewModel
 import com.pixense.app.ui.viewmodel.StudioTab
 import com.pixense.app.ui.screen.AiGalleryScreen
 import com.pixense.app.ui.view.ZoomableAsyncImage
+import com.pixense.app.data.analytics.PixenseAnalytics
 import com.pixense.app.util.PermissionUtils
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -204,6 +205,19 @@ fun CameraAiScreen(
     // If on Studio tab -> return to Camera
     BackHandler(enabled = !isCameraOpen && previewPhoto == null && currentTab == StudioTab.STUDIO) {
         viewModel.openCamera()
+    }
+
+    LaunchedEffect(isCameraOpen, currentTab) {
+        if (isCameraOpen) {
+            PixenseAnalytics.logScreenView("CameraScreen")
+        } else {
+            when (currentTab) {
+                StudioTab.STUDIO -> PixenseAnalytics.logScreenView("StudioScreen")
+                StudioTab.GALLERY -> PixenseAnalytics.logScreenView("AiGalleryScreen")
+                StudioTab.QUEUE -> PixenseAnalytics.logScreenView("AiQueueScreen")
+                StudioTab.SETTINGS -> PixenseAnalytics.logScreenView("SettingsScreen")
+            }
+        }
     }
 
     LaunchedEffect(saveStatusMessage) {

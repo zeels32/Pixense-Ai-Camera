@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "676735464251",
+    "project_id": "pixense---ai-camera",
+    "storage_bucket": "pixense---ai-camera.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676735464251:android:612d1e0271b89742d6bd1e",
+        "android_client_info": {
+          "package_name": "com.pixense.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqVUEbpjksoh9ki05TycX7LHJf3dCIh_0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

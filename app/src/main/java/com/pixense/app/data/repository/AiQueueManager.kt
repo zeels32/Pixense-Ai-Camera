@@ -152,11 +152,13 @@ class AiQueueManager private constructor(private val context: Context) {
             progress = 0f
         )
         _queue.value = _queue.value + item
+        PixenseAnalytics.logEvent("queue_item_enqueued", mapOf("photo" to photo.displayName, "queue_size" to _queue.value.size))
         triggerQueueProcessing()
         return id
     }
 
     fun retry(itemId: String) {
+        PixenseAnalytics.logEvent("queue_item_retried", mapOf("item_id" to itemId))
         _queue.value = _queue.value.map { item ->
             if (item.id == itemId) {
                 item.copy(status = QueueItemStatus.Pending, progress = 0f)
@@ -168,6 +170,7 @@ class AiQueueManager private constructor(private val context: Context) {
     }
 
     fun stop(itemId: String) {
+        PixenseAnalytics.logEvent("queue_item_stopped", mapOf("item_id" to itemId))
         if (activeItemId == itemId) {
             activeJob?.cancel()
             activeJob = null
@@ -178,6 +181,7 @@ class AiQueueManager private constructor(private val context: Context) {
     }
 
     fun cancel(itemId: String) {
+        PixenseAnalytics.logEvent("queue_item_cancelled", mapOf("item_id" to itemId))
         if (activeItemId == itemId) {
             activeJob?.cancel()
             activeJob = null
@@ -357,6 +361,7 @@ class AiQueueManager private constructor(private val context: Context) {
             throw e
         } catch (e: GeminiApiException.NoInternet) {
             Log.e(TAG, "Queue item failed: No internet", e)
+            PixenseAnalytics.recordException(e, "Queue processing failed: No Internet")
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }
@@ -371,6 +376,7 @@ class AiQueueManager private constructor(private val context: Context) {
             )
         } catch (e: GeminiApiException.MissingApiKey) {
             Log.e(TAG, "Queue item failed: Missing API Key", e)
+            PixenseAnalytics.recordException(e, "Queue processing failed: Missing API Key")
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }
@@ -385,6 +391,7 @@ class AiQueueManager private constructor(private val context: Context) {
             )
         } catch (e: GeminiApiException.QuotaExceeded) {
             Log.e(TAG, "Queue item failed: Quota exceeded", e)
+            PixenseAnalytics.recordException(e, "Queue processing failed: Quota Exceeded")
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }
@@ -400,6 +407,7 @@ class AiQueueManager private constructor(private val context: Context) {
             delay(2000L)
         } catch (e: GeminiApiException) {
             Log.e(TAG, "Queue item failed with GeminiApiException", e)
+            PixenseAnalytics.recordException(e, "Queue processing failed: GeminiApiException")
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }
@@ -414,6 +422,7 @@ class AiQueueManager private constructor(private val context: Context) {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Queue item failed with unexpected exception", e)
+            PixenseAnalytics.recordException(e, "Queue processing failed: Unexpected Exception")
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }

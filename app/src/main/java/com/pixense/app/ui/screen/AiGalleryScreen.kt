@@ -3,6 +3,7 @@ package com.pixense.app.ui.screen
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.pixense.app.data.analytics.PixenseAnalytics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -232,7 +233,10 @@ fun AiGalleryScreen(
                             GalleryFilterChip(
                                 label = "All (${enhancedPhotos.size})",
                                 isSelected = selectedSceneFilter == null,
-                                onClick = { selectedSceneFilter = null }
+                                onClick = {
+                                    selectedSceneFilter = null
+                                    PixenseAnalytics.logEvent("gallery_filter_applied", mapOf("scene" to "All"))
+                                }
                             )
                         }
 
@@ -242,7 +246,9 @@ fun AiGalleryScreen(
                                 label = "$scene ($count)",
                                 isSelected = selectedSceneFilter.equals(scene, ignoreCase = true),
                                 onClick = {
-                                    selectedSceneFilter = if (selectedSceneFilter.equals(scene, ignoreCase = true)) null else scene
+                                    val newFilter = if (selectedSceneFilter.equals(scene, ignoreCase = true)) null else scene
+                                    selectedSceneFilter = newFilter
+                                    PixenseAnalytics.logEvent("gallery_filter_applied", mapOf("scene" to (newFilter ?: "All")))
                                 }
                             )
                         }
@@ -754,6 +760,7 @@ fun GalleryPhotoDetailDialog(
 }
 
 private fun sharePhoto(context: Context, uri: Uri, name: String) {
+    PixenseAnalytics.logEvent("photo_shared", mapOf("name" to name))
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
         type = "image/jpeg"
         putExtra(Intent.EXTRA_STREAM, uri)
