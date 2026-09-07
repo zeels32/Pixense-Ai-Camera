@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClearAll
@@ -70,7 +71,8 @@ import java.util.Locale
 @Composable
 fun AiQueueScreen(
     viewModel: CameraAiViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = { viewModel.selectTab(StudioTab.STUDIO) }
 ) {
     val queueItems by viewModel.queueItems.collectAsState()
     val isAutoProcessEnabled by viewModel.isAutoProcessEnabled.collectAsState()
@@ -111,6 +113,21 @@ fun AiQueueScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            IconButton(
+                                onClick = onBack,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(BentoTheme.colors.cardMuted)
+                                    .testTag("queue_back_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back to Studio",
+                                    tint = BentoTheme.colors.textPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(42.dp)

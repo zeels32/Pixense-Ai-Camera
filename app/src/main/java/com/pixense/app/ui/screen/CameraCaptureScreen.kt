@@ -97,6 +97,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -200,6 +201,12 @@ private fun CameraViewContent(
 
     var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     val isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT
+    var lensRotationAngle by remember { mutableFloatStateOf(0f) }
+    val animatedLensRotation by animateFloatAsState(
+        targetValue = lensRotationAngle,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "lensRotation"
+    )
     var mirrorSelfie by remember { mutableStateOf(true) }
     var flashMode by remember { mutableStateOf(CameraFlashMode.AUTO) }
     var selectedAspectRatio by remember { mutableStateOf(CameraAspectRatio.RATIO_4_3) }
@@ -645,7 +652,7 @@ private fun CameraViewContent(
             }
         }
 
-        // Top Controls Bar (Flash, Aspect Ratio, Mirror Selfie, Grid, Switch Camera)
+        // Top Controls Bar (Exit to Studio, Flash, Aspect Ratio, Mirror Selfie [front only], Grid)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -656,16 +663,45 @@ private fun CameraViewContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top Quick Action Icons (Flash, Aspect Ratio, Mirror Selfie, Grid, Flip Lens)
+                // Exit / Back to Studio Button
+                Surface(
+                    onClick = onClose,
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                    modifier = Modifier.testTag("camera_close_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Studio",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Studio",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Top Quick Action Icons (Flash, Aspect Ratio, Grid, Selfie Mirror [front-only])
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     // Flash Toggle Button
                     IconButton(
@@ -713,26 +749,6 @@ private fun CameraViewContent(
                         }
                     }
 
-                    // Selfie Mirror Toggle (Highlighted when front camera is active)
-                    IconButton(
-                        onClick = { mirrorSelfie = !mirrorSelfie },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isFrontCamera && mirrorSelfie) BentoPurplePrimary
-                                else Color.Black.copy(alpha = 0.55f)
-                            )
-                            .testTag("camera_mirror_toggle")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Flip,
-                            contentDescription = "Mirror Selfie: ${if (mirrorSelfie) "Enabled" else "Disabled"}",
-                            tint = if (mirrorSelfie) Color.White else Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
                     // Grid Toggle Button
                     IconButton(
                         onClick = { showGrid = !showGrid },
@@ -750,28 +766,26 @@ private fun CameraViewContent(
                         )
                     }
 
-                    // Flip Front/Back Lens Button
-                    IconButton(
-                        onClick = {
-                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                                CameraSelector.LENS_FACING_FRONT
-                            } else {
-                                CameraSelector.LENS_FACING_BACK
-                            }
-                            exposureIndex = 0
-                        },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .testTag("camera_flip_lens")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Cameraswitch,
-                            contentDescription = "Switch Camera Lens",
-                            tint = Color.White,
-                            modifier = Modifier.size(19.dp)
-                        )
+                    // Selfie Mirror Toggle (ONLY visible when selfie / front camera is active)
+                    if (isFrontCamera) {
+                        IconButton(
+                            onClick = { mirrorSelfie = !mirrorSelfie },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (mirrorSelfie) BentoPurplePrimary
+                                    else Color.Black.copy(alpha = 0.55f)
+                                )
+                                .testTag("camera_mirror_toggle")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Flip,
+                                contentDescription = "Mirror Selfie: ${if (mirrorSelfie) "Enabled" else "Disabled"}",
+                                tint = if (mirrorSelfie) Color.White else Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -878,80 +892,45 @@ private fun CameraViewContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
+                    .padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: AI Gallery / Latest Photo Preview Thumbnail + Studio Dashboard Icon Button
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Latest Photo Preview Thumbnail
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                            .clickable {
-                                if (latestPhoto != null) {
-                                    onOpenPreview(latestPhoto)
-                                } else {
-                                    onOpenGallery()
-                                }
+                // Left: Photo Preview Thumbnail / Gallery Button
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                        .clickable {
+                            if (latestPhoto != null) {
+                                onOpenPreview(latestPhoto)
+                            } else {
+                                onOpenGallery()
                             }
-                            .testTag("camera_gallery_thumbnail"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (latestPhoto != null) {
-                            OptimizedThumbnailImage(
-                                model = latestPhoto.uri,
-                                contentDescription = "Latest Photo",
-                                targetSizePx = 200,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                memoryCacheKey = "cam_thumb_${latestPhoto.id}"
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.PhotoLibrary,
-                                contentDescription = "Gallery",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
                         }
-                    }
-
-                    // Studio Dashboard Button
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(BentoPurplePrimary)
-                            .border(1.5.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            .clickable { onOpenGallery() }
-                            .testTag("camera_studio_dashboard_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Studio Dashboard",
-                                tint = Color.White,
-                                modifier = Modifier.size(19.dp)
-                            )
-                            Text(
-                                text = "Studio",
-                                color = Color.White,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 9.sp
-                            )
-                        }
+                        .testTag("camera_gallery_thumbnail"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (latestPhoto != null) {
+                        OptimizedThumbnailImage(
+                            model = latestPhoto.uri,
+                            contentDescription = "Latest Photo",
+                            targetSizePx = 200,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            memoryCacheKey = "cam_thumb_${latestPhoto.id}"
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = "Gallery",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
 
@@ -988,31 +967,33 @@ private fun CameraViewContent(
                     }
                 )
 
-                // Right: Active Aspect Ratio & Mirror Badge
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.Black.copy(alpha = 0.6f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
+                // Right: Flip Front/Back Lens Button with Animated 180° Rotation
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                        .clickable {
+                            lensRotationAngle += 180f
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                                CameraSelector.LENS_FACING_FRONT
+                            } else {
+                                CameraSelector.LENS_FACING_BACK
+                            }
+                            exposureIndex = 0
+                        }
+                        .testTag("camera_flip_lens"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                        )
-                        Text(
-                            text = if (isFrontCamera && mirrorSelfie) "${selectedAspectRatio.displayName} • MIRROR"
-                            else "${selectedAspectRatio.displayName} • RAW",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Cameraswitch,
+                        contentDescription = "Switch Camera Lens",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(26.dp)
+                            .rotate(animatedLensRotation)
+                    )
                 }
             }
         }

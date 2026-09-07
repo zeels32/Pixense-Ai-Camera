@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -323,31 +324,12 @@ fun CameraAiScreen(
                 .background(BentoTheme.colors.bg),
             containerColor = BentoTheme.colors.bg,
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            floatingActionButtonPosition = FabPosition.Center,
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { viewModel.openCamera() },
-                    containerColor = BentoTheme.colors.purplePrimary,
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-                    modifier = Modifier
-                        .size(60.dp)
-                        .testTag("floating_camera_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "Capture Photo with In-App Camera",
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            },
             bottomBar = {
                 StudioBottomNavigationBar(
                     currentTab = currentTab,
-                    pendingQueueCount = pendingQueueCount,
                     galleryCount = enhancedPhotos.size,
-                    onSelectTab = { tab -> viewModel.selectTab(tab) }
+                    onSelectTab = { tab -> viewModel.selectTab(tab) },
+                    onOpenCamera = { viewModel.openCamera() }
                 )
             }
         ) { innerPadding ->
@@ -415,9 +397,9 @@ fun CameraAiScreen(
 @Composable
 fun StudioBottomNavigationBar(
     currentTab: StudioTab,
-    pendingQueueCount: Int,
     galleryCount: Int,
-    onSelectTab: (StudioTab) -> Unit
+    onSelectTab: (StudioTab) -> Unit,
+    onOpenCamera: () -> Unit
 ) {
     NavigationBar(
         containerColor = BentoTheme.colors.cardBg,
@@ -432,7 +414,7 @@ fun StudioBottomNavigationBar(
             onClick = { onSelectTab(StudioTab.STUDIO) },
             icon = {
                 Icon(
-                    imageVector = Icons.Default.CameraAlt,
+                    imageVector = Icons.Default.AutoAwesome,
                     contentDescription = "Studio",
                     modifier = Modifier.size(24.dp)
                 )
@@ -446,6 +428,36 @@ fun StudioBottomNavigationBar(
                 unselectedTextColor = BentoTheme.colors.textSecondary
             ),
             modifier = Modifier.testTag("nav_tab_studio")
+        )
+
+        NavigationBarItem(
+            selected = false,
+            onClick = onOpenCamera,
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(BentoTheme.colors.purplePrimary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "Camera",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            },
+            label = { Text("Camera", fontWeight = FontWeight.SemiBold) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BentoTheme.colors.purplePrimary,
+                selectedTextColor = BentoTheme.colors.purplePrimary,
+                indicatorColor = Color.Transparent,
+                unselectedIconColor = BentoTheme.colors.purplePrimary,
+                unselectedTextColor = BentoTheme.colors.textSecondary
+            ),
+            modifier = Modifier.testTag("nav_tab_camera")
         )
 
         NavigationBarItem(
@@ -477,58 +489,6 @@ fun StudioBottomNavigationBar(
                 unselectedTextColor = BentoTheme.colors.textSecondary
             ),
             modifier = Modifier.testTag("nav_tab_gallery")
-        )
-
-        NavigationBarItem(
-            selected = currentTab == StudioTab.QUEUE,
-            onClick = { onSelectTab(StudioTab.QUEUE) },
-            icon = {
-                BadgedBox(
-                    badge = {
-                        if (pendingQueueCount > 0) {
-                            Badge(containerColor = Color(0xFF0288D1)) {
-                                Text(pendingQueueCount.toString(), color = Color.White, fontSize = 10.sp)
-                            }
-                        }
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = "AI Queue",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            },
-            label = { Text("AI Queue", fontWeight = if (currentTab == StudioTab.QUEUE) FontWeight.Bold else FontWeight.Normal) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color(0xFF0288D1),
-                selectedTextColor = Color(0xFF0288D1),
-                indicatorColor = Color(0xFFE0F2FE),
-                unselectedIconColor = BentoTheme.colors.textSecondary,
-                unselectedTextColor = BentoTheme.colors.textSecondary
-            ),
-            modifier = Modifier.testTag("nav_tab_queue")
-        )
-
-        NavigationBarItem(
-            selected = currentTab == StudioTab.SETTINGS,
-            onClick = { onSelectTab(StudioTab.SETTINGS) },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    modifier = Modifier.size(24.dp)
-                )
-            },
-            label = { Text("Settings", fontWeight = if (currentTab == StudioTab.SETTINGS) FontWeight.Bold else FontWeight.Normal) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = BentoTheme.colors.purplePrimary,
-                selectedTextColor = BentoTheme.colors.purplePrimary,
-                indicatorColor = BentoTheme.colors.purpleContainer,
-                unselectedIconColor = BentoTheme.colors.textSecondary,
-                unselectedTextColor = BentoTheme.colors.textSecondary
-            ),
-            modifier = Modifier.testTag("nav_tab_settings")
         )
     }
 }
@@ -580,6 +540,7 @@ fun StudioTabScreen(
             onRequestPermission = { storagePermissionState.launchPermissionRequest() },
             onOpenSettings = { PermissionUtils.openAppSettings(context) },
             onOpenCamera = { viewModel.openCamera() },
+            onOpenQueue = { viewModel.selectTab(StudioTab.QUEUE) },
             modifier = modifier
         )
     }
@@ -590,6 +551,7 @@ fun StudioPermissionPlaceholderView(
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCamera: () -> Unit,
+    onOpenQueue: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -598,7 +560,11 @@ fun StudioPermissionPlaceholderView(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        BentoHeader()
+        BentoHeader(
+            onOpenQueue = onOpenQueue,
+            onOpenSettings = onOpenSettings,
+            pendingQueueCount = 0
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -759,7 +725,11 @@ fun StudioWorkspaceContent(
     ) {
         // Bento Header Section
         item(span = { GridItemSpan(maxLineSpan) }) {
-            BentoHeader()
+            BentoHeader(
+                onOpenQueue = { viewModel.selectTab(StudioTab.QUEUE) },
+                onOpenSettings = { viewModel.selectTab(StudioTab.SETTINGS) },
+                pendingQueueCount = pendingQueueCount
+            )
         }
 
         // Active Queue Banner (when photos are actively processing)
@@ -853,10 +823,6 @@ fun StudioWorkspaceContent(
             }
         }
 
-        // DCIM Gallery Header Card
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            DcimHeaderCard(totalLoaded = totalLoaded)
-        }
 
         // Initial Loading, Error, Empty, or Photo Grid Items
         if (refreshState is LoadState.Loading && totalLoaded == 0) {
@@ -1018,9 +984,14 @@ fun AutoProcessToggleCard(
 }
 
 @Composable
-fun BentoHeader() {
+fun BentoHeader(
+    onOpenQueue: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    pendingQueueCount: Int = 0,
+    modifier: Modifier = Modifier
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1029,10 +1000,64 @@ fun BentoHeader() {
         Text(
             text = "Pixense",
             fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             letterSpacing = (-0.5).sp,
             color = BentoTheme.colors.textPrimary
         )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // AI Queue Header Button with Pending Badge
+            IconButton(
+                onClick = onOpenQueue,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(BentoTheme.colors.cardBg)
+                    .border(1.dp, BentoTheme.colors.border, CircleShape)
+                    .testTag("header_button_queue")
+            ) {
+                BadgedBox(
+                    badge = {
+                        if (pendingQueueCount > 0) {
+                            Badge(
+                                containerColor = Color(0xFF0288D1),
+                                modifier = Modifier.offset(x = 4.dp, y = (-4).dp)
+                            ) {
+                                Text(pendingQueueCount.toString(), color = Color.White, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = "AI Queue",
+                        tint = if (pendingQueueCount > 0) Color(0xFF0288D1) else BentoTheme.colors.textPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Settings Header Button
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(BentoTheme.colors.cardBg)
+                    .border(1.dp, BentoTheme.colors.border, CircleShape)
+                    .testTag("header_button_settings")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = BentoTheme.colors.textPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
     }
 }
 
