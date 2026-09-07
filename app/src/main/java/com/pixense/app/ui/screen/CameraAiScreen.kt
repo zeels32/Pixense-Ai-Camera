@@ -20,6 +20,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,11 +32,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.pixense.app.ui.view.OptimizedThumbnailImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BrightnessAuto
@@ -535,123 +541,175 @@ fun StudioWorkspaceContent(
     isSaving: Boolean
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
+    val totalLoaded = dcimLazyPagingItems.itemCount
+    val refreshState = dcimLazyPagingItems.loadState.refresh
+    val appendState = dcimLazyPagingItems.loadState.append
 
-    // On-demand pagination trigger: loads the next page when the user scrolls near the bottom
-    LaunchedEffect(scrollState.value, scrollState.maxValue, dcimLazyPagingItems.itemCount, dcimLazyPagingItems.loadState) {
-        val count = dcimLazyPagingItems.itemCount
-        val appendState = dcimLazyPagingItems.loadState.append
-        if (count > 0 && appendState is LoadState.NotLoading && !appendState.endOfPaginationReached) {
-            if (scrollState.maxValue > 0 && scrollState.value >= (scrollState.maxValue - 600).coerceAtLeast(0)) {
-                // Accessing the tail item requests next page from Paging 3
-                dcimLazyPagingItems[count - 1]
-            }
-        }
-    }
-
-    Column(
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = 80.dp)
     ) {
         // Bento Header Section
-        BentoHeader()
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            BentoHeader()
+        }
 
         // Active Queue Banner (when photos are actively processing)
         if (pendingQueueCount > 0) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { viewModel.selectTab(StudioTab.QUEUE) }
-                    .testTag("active_queue_banner"),
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF0288D1).copy(alpha = 0.15f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.selectTab(StudioTab.QUEUE) }
+                        .testTag("active_queue_banner"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFF0288D1).copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0288D1).copy(alpha = 0.3f))
                 ) {
                     Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        CircularProgressIndicator(
-                            strokeWidth = 2.dp,
-                            color = Color(0xFF0288D1),
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = Color(0xFF0288D1),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "$pendingQueueCount photo${if (pendingQueueCount > 1) "s" else ""} processing in AI Queue…",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTheme.colors.textPrimary
+                            )
+                        }
                         Text(
-                            text = "$pendingQueueCount photo${if (pendingQueueCount > 1) "s" else ""} processing in AI Queue…",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BentoTheme.colors.textPrimary
+                            text = "VIEW QUEUE →",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0288D1)
                         )
                     }
-                    Text(
-                        text = "VIEW QUEUE →",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF0288D1)
-                    )
                 }
             }
         }
 
         // Active Enhancement Result (Hero Before/After & AI Insights)
         if (enhancementState is EnhancementUiState.Success && latestPhoto != null) {
-            BentoHeroPhotoCard(
-                photo = latestPhoto,
-                enhancementState = enhancementState,
-                isShowingOriginal = isShowingOriginal,
-                onToggleOriginal = { showOriginal -> viewModel.toggleShowOriginal(showOriginal) },
-                onShare = {
-                    val currentSuccess = enhancementState as? EnhancementUiState.Success
-                    if (currentSuccess != null) {
-                        shareBitmap(context, currentSuccess.enhancedBitmap)
-                    } else {
-                        shareUri(context, latestPhoto.uri)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                BentoHeroPhotoCard(
+                    photo = latestPhoto,
+                    enhancementState = enhancementState,
+                    isShowingOriginal = isShowingOriginal,
+                    onToggleOriginal = { showOriginal -> viewModel.toggleShowOriginal(showOriginal) },
+                    onShare = {
+                        val currentSuccess = enhancementState as? EnhancementUiState.Success
+                        if (currentSuccess != null) {
+                            shareBitmap(context, currentSuccess.enhancedBitmap)
+                        } else {
+                            shareUri(context, latestPhoto.uri)
+                        }
                     }
-                }
-            )
+                )
+            }
 
-            BentoAiAnalysisCard(analysis = enhancementState.analysis)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                BentoAiAnalysisCard(analysis = enhancementState.analysis)
+            }
 
-            StudioActionControls(
-                enhancementState = enhancementState,
-                isSaving = isSaving,
-                onSave = { viewModel.saveEnhancedPhoto() },
-                onReset = { viewModel.resetEnhancement() }
-            )
-        }
-
-        // Error Card (Visible when Gemini API or network fails)
-        AnimatedVisibility(
-            visible = enhancementState is EnhancementUiState.Error,
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut()
-        ) {
-            val error = enhancementState as? EnhancementUiState.Error
-            if (error != null) {
-                BentoErrorCard(
-                    errorMessage = error.message,
-                    onRetry = { viewModel.enhancePhoto() },
-                    onDismiss = { viewModel.clearError() }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                StudioActionControls(
+                    enhancementState = enhancementState,
+                    isSaving = isSaving,
+                    onSave = { viewModel.saveEnhancedPhoto() },
+                    onReset = { viewModel.resetEnhancement() }
                 )
             }
         }
 
-        // Paging 3 DCIM Photos Grid (Auto-loads next page on scroll inside the grid)
-        DcimPhotoPagingGrid(
-            pagingItems = dcimLazyPagingItems,
-            onPhotoClick = { photo -> viewModel.openPhotoPreview(photo) },
-            onOpenCamera = { viewModel.openCamera() }
-        )
+        // Error Card (Visible when Gemini API or network fails)
+        if (enhancementState is EnhancementUiState.Error) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                val error = enhancementState as? EnhancementUiState.Error
+                if (error != null) {
+                    BentoErrorCard(
+                        errorMessage = error.message,
+                        onRetry = { viewModel.enhancePhoto() },
+                        onDismiss = { viewModel.clearError() }
+                    )
+                }
+            }
+        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // DCIM Gallery Header Card
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            DcimHeaderCard(totalLoaded = totalLoaded)
+        }
+
+        // Initial Loading, Error, Empty, or Photo Grid Items
+        if (refreshState is LoadState.Loading && totalLoaded == 0) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                DcimLoadingState()
+            }
+        } else if (refreshState is LoadState.Error && totalLoaded == 0) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                DcimErrorState(onRetry = { dcimLazyPagingItems.retry() })
+            }
+        } else if (totalLoaded == 0) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                DcimEmptyState(onOpenCamera = { viewModel.openCamera() })
+            }
+        } else {
+            // Lazy Photos: Only items entering the viewport are composed!
+            // When scrolling, Paging 3 auto-loads next set of photos via LazyPagingItems
+            items(
+                count = totalLoaded,
+                key = { index -> dcimLazyPagingItems.peek(index)?.id ?: index }
+            ) { index ->
+                val photo = dcimLazyPagingItems[index]
+                if (photo != null) {
+                    DcimPhotoGridItem(
+                        photo = photo,
+                        onClick = { viewModel.openPhotoPreview(photo) }
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(0.85f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(BentoTheme.colors.cardMuted)
+                    )
+                }
+            }
+
+            // Append state indicators at the bottom of the grid
+            if (appendState is LoadState.Loading) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    DcimAppendLoadingIndicator()
+                }
+            } else if (appendState is LoadState.Error) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    DcimAppendErrorIndicator(onRetry = { dcimLazyPagingItems.retry() })
+                }
+            } else if (appendState.endOfPaginationReached && totalLoaded > 4) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    DcimAllLoadedIndicator(totalLoaded = totalLoaded)
+                }
+            }
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
@@ -1009,6 +1067,243 @@ fun BentoHeroPhotoCard(
 }
 
 @Composable
+fun DcimHeaderCard(
+    totalLoaded: Int,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("dcim_photos_card"),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = BentoTheme.colors.cardBg),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.border)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(BentoTheme.colors.purpleContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Collections,
+                        contentDescription = null,
+                        tint = BentoTheme.colors.purplePrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = "DCIM Camera Photos",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BentoTheme.colors.textPrimary
+                    )
+                    Text(
+                        text = if (totalLoaded > 0) "$totalLoaded photo${if (totalLoaded == 1) "" else "s"} loaded" else "DCIM Gallery",
+                        fontSize = 11.sp,
+                        color = BentoTheme.colors.textSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DcimLoadingState(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CircularProgressIndicator(
+                strokeWidth = 2.5.dp,
+                color = BentoTheme.colors.purplePrimary,
+                modifier = Modifier.size(28.dp)
+            )
+            Text(
+                text = "Loading DCIM gallery…",
+                fontSize = 12.sp,
+                color = BentoTheme.colors.textSecondary
+            )
+        }
+    }
+}
+
+@Composable
+fun DcimErrorState(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Failed to load photos",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFE53935)
+            )
+            FilledTonalButton(
+                onClick = onRetry,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Retry", fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun DcimEmptyState(
+    onOpenCamera: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Collections,
+                contentDescription = null,
+                tint = BentoTheme.colors.textSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(40.dp)
+            )
+            Text(
+                text = "No photos in DCIM folder",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = BentoTheme.colors.textSecondary
+            )
+            FilledTonalButton(
+                onClick = onOpenCamera,
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = BentoTheme.colors.purpleContainer)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    tint = BentoTheme.colors.purplePrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Take a Photo", color = BentoTheme.colors.purplePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+fun DcimAppendLoadingIndicator(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .testTag("dcim_load_more_indicator"),
+        color = BentoTheme.colors.purpleContainer.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.purplePrimary.copy(alpha = 0.25f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp, horizontal = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                color = BentoTheme.colors.purplePrimary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Paging 3 loading more photos…",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = BentoTheme.colors.purplePrimary
+            )
+        }
+    }
+}
+
+@Composable
+fun DcimAppendErrorIndicator(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Error loading next page",
+            fontSize = 12.sp,
+            color = Color(0xFFE53935)
+        )
+        TextButton(onClick = onRetry) {
+            Text("Retry", fontSize = 12.sp, color = BentoTheme.colors.purplePrimary)
+        }
+    }
+}
+
+@Composable
+fun DcimAllLoadedIndicator(
+    totalLoaded: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "✓ All $totalLoaded photos loaded",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = BentoTheme.colors.textSecondary
+        )
+    }
+}
+
+@Composable
 fun DcimPhotoPagingGrid(
     pagingItems: LazyPagingItems<CameraPhoto>,
     onPhotoClick: (CameraPhoto) -> Unit,
@@ -1033,296 +1328,43 @@ fun DcimPhotoPagingGrid(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(BentoTheme.colors.purpleContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Collections,
-                            contentDescription = null,
-                            tint = BentoTheme.colors.purplePrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Column {
-                        Text(
-                            text = "DCIM Camera Photos",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BentoTheme.colors.textPrimary
-                        )
-                        Text(
-                            text = if (totalLoaded > 0) "$totalLoaded photo${if (totalLoaded == 1) "" else "s"} loaded" else "DCIM Gallery",
-                            fontSize = 11.sp,
-                            color = BentoTheme.colors.textSecondary
-                        )
-                    }
-                }
-
-                /*Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = BentoTheme.colors.purpleContainer,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.purplePrimary.copy(alpha = 0.2f))
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (appendState is LoadState.Loading || refreshState is LoadState.Loading) {
-                            CircularProgressIndicator(
-                                strokeWidth = 1.5.dp,
-                                color = BentoTheme.colors.purplePrimary,
-                                modifier = Modifier.size(10.dp)
-                            )
-                        }
-                        Text(
-                            text = "$totalLoaded loaded",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BentoTheme.colors.purplePrimary
-                        )
-                    }
-                }*/
-            }
+            DcimHeaderCard(totalLoaded = totalLoaded)
 
             if (refreshState is LoadState.Loading && totalLoaded == 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            strokeWidth = 2.5.dp,
-                            color = BentoTheme.colors.purplePrimary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Text(
-                            text = "Loading DCIM gallery…",
-                            fontSize = 12.sp,
-                            color = BentoTheme.colors.textSecondary
-                        )
-                    }
-                }
+                DcimLoadingState()
             } else if (refreshState is LoadState.Error && totalLoaded == 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Failed to load photos",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFE53935)
-                        )
-                        FilledTonalButton(
-                            onClick = { pagingItems.retry() },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Retry", fontSize = 12.sp)
-                        }
-                    }
-                }
+                DcimErrorState(onRetry = { pagingItems.retry() })
             } else if (totalLoaded == 0) {
-                Box(
+                DcimEmptyState(onOpenCamera = onOpenCamera)
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Collections,
-                            contentDescription = null,
-                            tint = BentoTheme.colors.textSecondary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(40.dp)
-                        )
-                        Text(
-                            text = "No photos in DCIM folder",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = BentoTheme.colors.textSecondary
-                        )
-                        FilledTonalButton(
-                            onClick = onOpenCamera,
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = BentoTheme.colors.purpleContainer)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = null,
-                                tint = BentoTheme.colors.purplePrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Take a Photo", color = BentoTheme.colors.purplePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            } else {
-                // Responsive 2-column Grid of Photos from Paging 3
-                Column(
+                        .height(400.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    val indices = (0 until totalLoaded).chunked(2)
-                    indices.forEach { rowIndices ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            rowIndices.forEach { index ->
-                                val photo = pagingItems[index]
-                                if (photo != null) {
-                                    DcimPhotoGridItem(
-                                        photo = photo,
-                                        onClick = { onPhotoClick(photo) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                } else {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                            if (rowIndices.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
+                    items(
+                        count = totalLoaded,
+                        key = { index -> pagingItems.peek(index)?.id ?: index }
+                    ) { index ->
+                        val photo = pagingItems[index]
+                        if (photo != null) {
+                            DcimPhotoGridItem(
+                                photo = photo,
+                                onClick = { onPhotoClick(photo) }
+                            )
                         }
                     }
                 }
 
-                // Paging 3 Dynamic Append Loading Indicator
-                when (appendState) {
-                    is LoadState.Loading -> {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .testTag("dcim_load_more_indicator"),
-                            color = BentoTheme.colors.purpleContainer.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(14.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.purplePrimary.copy(alpha = 0.25f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 10.dp, horizontal = 14.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(
-                                    strokeWidth = 2.dp,
-                                    color = BentoTheme.colors.purplePrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Paging 3 loading more photos…",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = BentoTheme.colors.purplePrimary
-                                )
-                            }
-                        }
-                    }
-                    is LoadState.Error -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Error loading next page",
-                                fontSize = 12.sp,
-                                color = Color(0xFFE53935)
-                            )
-                            TextButton(onClick = { pagingItems.retry() }) {
-                                Text("Retry", fontSize = 12.sp, color = BentoTheme.colors.purplePrimary)
-                            }
-                        }
-                    }
-                    is LoadState.NotLoading -> {
-                        if (appendState.endOfPaginationReached && totalLoaded > 4) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "✓ All $totalLoaded photos loaded",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = BentoTheme.colors.textSecondary
-                                )
-                            }
-                        } else if (!appendState.endOfPaginationReached && totalLoaded >= 1) {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        if (totalLoaded > 0) {
-                                            pagingItems[totalLoaded - 1]
-                                        }
-                                    },
-                                color = BentoTheme.colors.purpleContainer.copy(alpha = 0.4f),
-                                shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.purplePrimary.copy(alpha = 0.25f))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp, horizontal = 12.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = null,
-                                        tint = BentoTheme.colors.purplePrimary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Load More Photos (${totalLoaded} loaded)",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = BentoTheme.colors.purplePrimary
-                                    )
-                                }
-                            }
-                        }
-                    }
+                if (appendState is LoadState.Loading) {
+                    DcimAppendLoadingIndicator()
+                } else if (appendState is LoadState.Error) {
+                    DcimAppendErrorIndicator(onRetry = { pagingItems.retry() })
+                } else if (appendState.endOfPaginationReached && totalLoaded > 4) {
+                    DcimAllLoadedIndicator(totalLoaded = totalLoaded)
                 }
             }
         }
@@ -1346,11 +1388,13 @@ fun DcimPhotoGridItem(
         border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.border)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
+            OptimizedThumbnailImage(
                 model = photo.uri,
                 contentDescription = photo.displayName,
+                targetSizePx = 400,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                memoryCacheKey = "dcim_thumb_${photo.id}"
             )
 
             // Top gradient overlay

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.pixense.app.ui.view.OptimizedThumbnailImage
 import com.pixense.app.R
 import com.pixense.app.data.model.EnhancementQueueItem
 import com.pixense.app.data.model.QueueItemStatus
@@ -345,10 +346,12 @@ fun QueueItemCard(
                         is QueueItemStatus.Completed -> status.enhancedUri
                         else -> item.photo.uri
                     }
-                    AsyncImage(
+                    OptimizedThumbnailImage(
                         model = displayUri,
                         contentDescription = item.photo.displayName,
+                        targetSizePx = 200,
                         contentScale = ContentScale.Crop,
+                        memoryCacheKey = "queue_thumb_${item.id}",
                         modifier = Modifier.fillMaxSize()
                     )
                 }

@@ -28,8 +28,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +86,7 @@ import com.pixense.app.R
 import com.pixense.app.data.db.EnhancedPhotoEntity
 import com.pixense.app.data.model.EnhancementPreset
 import com.pixense.app.ui.theme.BentoTheme
+import com.pixense.app.ui.view.OptimizedThumbnailImage
 import com.pixense.app.ui.view.ZoomableAsyncImage
 import com.pixense.app.ui.viewmodel.CameraAiViewModel
 import com.pixense.app.ui.viewmodel.StudioTab
@@ -112,6 +116,32 @@ fun AiGalleryScreen(
         } else {
             enhancedPhotos.filter { it.sceneType.contains(selectedSceneFilter!!, ignoreCase = true) }
         }
+    }
+
+    // On-scroll lazy loading pagination for heavy gallery images
+    val pageSize = 20
+    var visibleItemCount by remember(filteredPhotos.size, selectedSceneFilter) {
+        mutableStateOf(pageSize.coerceAtMost(filteredPhotos.size.coerceAtLeast(1)))
+    }
+
+    val gridState = rememberLazyGridState()
+
+    val shouldLoadMore = remember(gridState, visibleItemCount, filteredPhotos.size) {
+        derivedStateOf {
+            val totalItems = filteredPhotos.size
+            val lastVisibleItem = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            visibleItemCount < totalItems && lastVisibleItem >= visibleItemCount - 4
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value) {
+            visibleItemCount = (visibleItemCount + pageSize).coerceAtMost(filteredPhotos.size)
+        }
+    }
+
+    val displayedPhotos = remember(filteredPhotos, visibleItemCount) {
+        filteredPhotos.take(visibleItemCount)
     }
 
     Box(
@@ -286,19 +316,38 @@ fun AiGalleryScreen(
                     }
                 }
             } else {
-                // Photo Grid
+                // Photo Grid with on-scroll lazy loading
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = gridState,
                     contentPadding = PaddingValues(bottom = 80.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredPhotos, key = { it.id }) { photo ->
+                    items(displayedPhotos, key = { it.id }) { photo ->
                         GalleryPhotoCard(
                             photo = photo,
                             onClick = { viewModel.selectGalleryPhoto(photo) }
                         )
+                    }
+
+                    // Append loader when user scrolls near the bottom and more photos exist
+                    if (visibleItemCount < filteredPhotos.size) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    color = BentoTheme.colors.purplePrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -383,10 +432,12 @@ fun GalleryPhotoCard(
                     .weight(1f)
                     .background(BentoTheme.colors.cardMuted)
             ) {
-                AsyncImage(
+                OptimizedThumbnailImage(
                     model = photo.enhancedUri,
                     contentDescription = photo.enhancedDisplayName,
+                    targetSizePx = 400,
                     contentScale = ContentScale.Crop,
+                    memoryCacheKey = "gallery_thumb_${photo.id}",
                     modifier = Modifier.fillMaxSize()
                 )
 

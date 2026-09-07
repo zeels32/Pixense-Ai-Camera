@@ -114,6 +114,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import com.pixense.app.ui.view.OptimizedThumbnailImage
 import com.pixense.app.data.camera.CameraFocusHelper
 import com.pixense.app.data.camera.CameraLensDetector
 import com.pixense.app.data.camera.CameraLensPreset
@@ -904,11 +905,13 @@ private fun CameraViewContent(
                         contentAlignment = Alignment.Center
                     ) {
                         if (latestPhoto != null) {
-                            AsyncImage(
+                            OptimizedThumbnailImage(
                                 model = latestPhoto.uri,
                                 contentDescription = "Latest Photo",
+                                targetSizePx = 200,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                memoryCacheKey = "cam_thumb_${latestPhoto.id}"
                             )
                         } else {
                             Icon(
