@@ -108,7 +108,8 @@ data class SceneDetectionResult(
     val detectedElements: List<String>,
     val lightingCondition: String,
     val noiseAndBlurAssessment: String,
-    val tailoredCorrectionPlan: String
+    val tailoredCorrectionPlan: String,
+    val detectedText: String? = null
 )
 
 data class AiPhotoAnalysis(
@@ -130,7 +131,8 @@ data class AiPhotoAnalysis(
     val contrastAdjustment: Float = 1.15f,
     val saturationAdjustment: Float = 1.1f,
     val warmthAdjustment: Float = 0f,
-    val sharpnessAdjustment: Float = 1.2f
+    val sharpnessAdjustment: Float = 1.2f,
+    val detectedText: String? = null
 )
 
 sealed interface EnhancementUiState {

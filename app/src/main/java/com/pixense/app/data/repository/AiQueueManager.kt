@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.util.Log
 import com.pixense.app.data.ai.GeminiApiException
-import com.pixense.app.data.ai.GeminiVisionService
+import com.pixense.app.data.ai.GeminiVisionServiceNew
 import com.pixense.app.data.analytics.PixenseAnalytics
 import com.pixense.app.service.CameraCaptureService
 import com.pixense.app.data.db.AppDatabase
@@ -281,13 +281,13 @@ class AiQueueManager private constructor(private val context: Context) {
             val originalBitmap = repository.loadBitmap(pendingItem.photo.uri)
                 ?: throw GeminiApiException.GeneralError("Failed to decode camera photo file.")
 
-            // 2. 2-Stage Gemini LLM Detection + Gemini Vision Remastering
+            // 2. Gemini 4K Vision Remastering & Scene/Text Detection
             updateItemStatus(
                 pendingItem.id,
-                QueueItemStatus.InProgress("Gemini LLM detecting scene characteristics…"),
+                QueueItemStatus.InProgress("Gemini 4K AI analyzing scene & remastering photo…"),
                 0.4f
             )
-            val enhancementResult = GeminiVisionService.enhanceAndAnalyze(
+            val enhancementResult = GeminiVisionServiceNew.enhanceAndAnalyze(
                 context = context,
                 bitmap = originalBitmap,
                 preset = pendingItem.preset,
