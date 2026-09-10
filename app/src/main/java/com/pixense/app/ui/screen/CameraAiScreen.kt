@@ -128,6 +128,7 @@ import coil.request.ImageRequest
 import com.pixense.app.R
 import com.pixense.app.data.db.EnhancedPhotoEntity
 import com.pixense.app.data.model.AiPhotoAnalysis
+import com.pixense.app.data.model.AiPhotoOperation
 import com.pixense.app.data.model.CameraPhoto
 import com.pixense.app.data.model.EnhancementQueueItem
 import com.pixense.app.data.model.EnhancementUiState
@@ -169,6 +170,7 @@ fun CameraAiScreen(
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val previewPhoto by viewModel.previewPhoto.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val selectedOperation by viewModel.selectedOperation.collectAsStateWithLifecycle()
 
     val quotaState by viewModel.quotaState.collectAsStateWithLifecycle()
     val pendingAdPhoto by viewModel.pendingAdEnhancementPhoto.collectAsStateWithLifecycle()
@@ -185,8 +187,18 @@ fun CameraAiScreen(
         viewModel.closePhotoPreview()
     }
 
-    // 2. If camera is open -> double back press to exit app with toast
+    // 2. If camera is open -> close camera and return to AI Tools dashboard
     BackHandler(enabled = isCameraOpen && previewPhoto == null) {
+        viewModel.closeCamera()
+    }
+
+    // 3. If in other studio tabs (Gallery, Queue, Settings, Studio) -> return to AI Tools tab
+    BackHandler(enabled = !isCameraOpen && previewPhoto == null && currentTab != StudioTab.AI_TOOLS) {
+        viewModel.selectTab(StudioTab.AI_TOOLS)
+    }
+
+    // 4. If on AI Tools tab -> double back press to exit app with toast
+    BackHandler(enabled = !isCameraOpen && previewPhoto == null && currentTab == StudioTab.AI_TOOLS) {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastBackPressTime < 2000L) {
             activity?.finish()
@@ -196,22 +208,12 @@ fun CameraAiScreen(
         }
     }
 
-    // 3. If in studio tabs:
-    // If on Gallery, Queue, Settings -> return to Studio tab
-    BackHandler(enabled = !isCameraOpen && previewPhoto == null && currentTab != StudioTab.STUDIO) {
-        viewModel.selectTab(StudioTab.STUDIO)
-    }
-
-    // If on Studio tab -> return to Camera
-    BackHandler(enabled = !isCameraOpen && previewPhoto == null && currentTab == StudioTab.STUDIO) {
-        viewModel.openCamera()
-    }
-
     LaunchedEffect(isCameraOpen, currentTab) {
         if (isCameraOpen) {
             PixenseAnalytics.logScreenView("CameraScreen")
         } else {
             when (currentTab) {
+                StudioTab.AI_TOOLS -> PixenseAnalytics.logScreenView("AIToolsScreen")
                 StudioTab.STUDIO -> PixenseAnalytics.logScreenView("StudioScreen")
                 StudioTab.GALLERY -> PixenseAnalytics.logScreenView("AiGalleryScreen")
                 StudioTab.QUEUE -> PixenseAnalytics.logScreenView("AiQueueScreen")
@@ -353,6 +355,17 @@ fun CameraAiScreen(
                     .padding(innerPadding)
             ) {
                 when (currentTab) {
+                    StudioTab.AI_TOOLS -> {
+                        AIToolsScreen(
+                            viewModel = viewModel,
+                            onOpenQueue = { viewModel.selectTab(StudioTab.QUEUE) },
+                            onOpenSettings = { viewModel.selectTab(StudioTab.SETTINGS) },
+                            onSelectOperation = { op ->
+                                viewModel.selectOperation(op)
+                                viewModel.selectTab(StudioTab.STUDIO)
+                            }
+                        )
+                    }
                     StudioTab.STUDIO -> {
                         StudioTabScreen(
                             viewModel = viewModel,
@@ -388,9 +401,10 @@ fun CameraAiScreen(
         if (currentPreview != null) {
             UnifiedPhotoPreviewOverlay(
                 photo = currentPreview,
+                operation = selectedOperation,
                 onDismiss = { viewModel.closePhotoPreview() },
                 onEnhance = { photo ->
-                    viewModel.enhanceSpecificPhoto(photo)
+                    viewModel.enhanceSpecificPhotoWithOperation(photo, selectedOperation)
                 },
                 onDelete = { photo ->
                     viewModel.deleteDcimPhoto(photo)
@@ -399,7 +413,7 @@ fun CameraAiScreen(
                 onOpenStudio = {
                     viewModel.closePhotoPreview()
                     viewModel.closeCamera()
-                    viewModel.selectTab(StudioTab.STUDIO)
+                    viewModel.selectTab(StudioTab.AI_TOOLS)
                 },
                 queueItems = queueItems,
                 enhancedPhotos = enhancedPhotos
@@ -423,6 +437,27 @@ fun StudioBottomNavigationBar(
             .border(1.dp, BentoTheme.colors.border)
             .testTag("main_bottom_nav")
     ) {
+        NavigationBarItem(
+            selected = currentTab == StudioTab.AI_TOOLS,
+            onClick = { onSelectTab(StudioTab.AI_TOOLS) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = "AI Tools",
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            label = { Text("AI Tools", fontWeight = if (currentTab == StudioTab.AI_TOOLS) FontWeight.Bold else FontWeight.Normal) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BentoTheme.colors.purplePrimary,
+                selectedTextColor = BentoTheme.colors.purplePrimary,
+                indicatorColor = BentoTheme.colors.purpleContainer,
+                unselectedIconColor = BentoTheme.colors.textSecondary,
+                unselectedTextColor = BentoTheme.colors.textSecondary
+            ),
+            modifier = Modifier.testTag("nav_tab_ai_tools")
+        )
+
         NavigationBarItem(
             selected = currentTab == StudioTab.STUDIO,
             onClick = { onSelectTab(StudioTab.STUDIO) },
@@ -724,6 +759,7 @@ fun StudioWorkspaceContent(
     isSaving: Boolean
 ) {
     val context = LocalContext.current
+    val selectedOperation by viewModel.selectedOperation.collectAsStateWithLifecycle()
     val totalLoaded = dcimLazyPagingItems.itemCount
     val refreshState = dcimLazyPagingItems.loadState.refresh
     val appendState = dcimLazyPagingItems.loadState.append
@@ -744,6 +780,70 @@ fun StudioWorkspaceContent(
                 onOpenSettings = { viewModel.selectTab(StudioTab.SETTINGS) },
                 pendingQueueCount = pendingQueueCount
             )
+        }
+
+        // Contextual Active Tool Banner
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                color = BentoTheme.colors.cardBg,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BentoTheme.colors.border)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(BentoTheme.colors.purpleContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = selectedOperation.iconEmoji,
+                                fontSize = 20.sp
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Select photo to ${selectedOperation.title}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTheme.colors.textPrimary
+                            )
+                            Text(
+                                text = selectedOperation.description,
+                                fontSize = 11.sp,
+                                color = BentoTheme.colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = { viewModel.selectTab(StudioTab.AI_TOOLS) }
+                    ) {
+                        Text(
+                            text = "Change",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BentoTheme.colors.purplePrimary
+                        )
+                    }
+                }
+            }
         }
 
         // Active Queue Banner (when photos are actively processing)
@@ -868,7 +968,10 @@ fun StudioWorkspaceContent(
                 if (photo != null) {
                     DcimPhotoGridItem(
                         photo = photo,
-                        onClick = { viewModel.openPhotoPreview(photo) }
+                        onClick = {
+                            viewModel.openPhotoPreview(photo)
+                            PixenseAnalytics.logAiPhotoSelected(selectedOperation.analyticsTag)
+                        }
                     )
                 } else {
                     Box(
@@ -1708,6 +1811,7 @@ fun DcimPhotoGridItem(
 @Composable
 fun UnifiedPhotoPreviewOverlay(
     photo: CameraPhoto,
+    operation: AiPhotoOperation = AiPhotoOperation.FIX,
     onDismiss: () -> Unit,
     onEnhance: (CameraPhoto) -> Unit,
     onDelete: ((CameraPhoto) -> Unit)? = null,
@@ -1918,7 +2022,10 @@ fun UnifiedPhotoPreviewOverlay(
                         }
                     } else {
                         IconButton(
-                            onClick = { shareUri(context, currentDisplayedUri) },
+                            onClick = {
+                                shareUri(context, currentDisplayedUri)
+                                PixenseAnalytics.logEvent("ai_result_shared", mapOf("feature" to operation.analyticsTag))
+                            },
                             modifier = Modifier
                                 .size(42.dp)
                                 .clip(CircleShape)
@@ -2022,7 +2129,7 @@ fun UnifiedPhotoPreviewOverlay(
                             border = androidx.compose.foundation.BorderStroke(1.dp, if (isEnhanced) Color(0xFF34D399) else BentoTheme.colors.purplePrimary)
                         ) {
                             Text(
-                                text = if (isEnhanced) "ENHANCED • 100% QUALITY" else "GEMINI REMASTER",
+                                text = if (isEnhanced) "ENHANCED • 100% QUALITY" else "${operation.iconEmoji} ${operation.title.uppercase()} • GEMINI AI",
                                 color = if (isEnhanced) Color(0xFF34D399) else Color(0xFFC084FC),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
@@ -2056,7 +2163,7 @@ fun UnifiedPhotoPreviewOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Enhancing with Gemini AI…",
+                                    text = operation.statusMessage,
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
@@ -2109,7 +2216,7 @@ fun UnifiedPhotoPreviewOverlay(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Enhance with Gemini AI",
+                                    text = "${operation.title} with Gemini AI",
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp

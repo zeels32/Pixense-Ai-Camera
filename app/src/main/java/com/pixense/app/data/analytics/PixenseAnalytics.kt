@@ -147,4 +147,12 @@ object PixenseAnalytics {
             Log.w(TAG, "Error adding breadcrumb", e)
         }
     }
+
+    fun logAiToolSelected(analyticsTag: String) {
+
+    }
+
+    fun logAiPhotoSelected(analyticsTag: String) {
+
+    }
 }

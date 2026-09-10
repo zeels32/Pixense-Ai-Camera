@@ -12,6 +12,7 @@ import com.pixense.app.data.db.AppDatabase
 import com.pixense.app.data.db.EnhancedPhotoEntity
 import com.pixense.app.data.image.ImageProcessingEngine
 import com.pixense.app.data.model.AiPhotoAnalysis
+import com.pixense.app.data.model.AiPhotoOperation
 import com.pixense.app.data.model.CameraPhoto
 import com.pixense.app.data.model.EnhancementPreset
 import com.pixense.app.data.model.EnhancementQueueItem
@@ -132,7 +133,12 @@ class AiQueueManager private constructor(private val context: Context) {
      * Adds a camera photo into the AI Enhancement Queue.
      * Guaranteed: never enqueues an already enhanced image or a duplicate.
      */
-    fun enqueue(photo: CameraPhoto, preset: EnhancementPreset = EnhancementPreset.AUTO, force: Boolean = false): String {
+    fun enqueue(
+        photo: CameraPhoto,
+        preset: EnhancementPreset = EnhancementPreset.AUTO,
+        operation: AiPhotoOperation = AiPhotoOperation.FIX,
+        force: Boolean = false
+    ): String {
         if (photo.isEnhancedImage) {
             Log.w(TAG, "Skipping enqueue: Photo is an enhanced image (${photo.displayName})")
             return ""
@@ -148,11 +154,15 @@ class AiQueueManager private constructor(private val context: Context) {
             id = id,
             photo = photo,
             preset = EnhancementPreset.AUTO,
+            operation = operation,
             status = QueueItemStatus.Pending,
             progress = 0f
         )
         _queue.value = _queue.value + item
-        PixenseAnalytics.logEvent("queue_item_enqueued", mapOf("photo" to photo.displayName, "queue_size" to _queue.value.size))
+        PixenseAnalytics.logEvent(
+            "queue_item_enqueued",
+            mapOf("photo" to photo.displayName, "queue_size" to _queue.value.size, "operation" to operation.analyticsTag)
+        )
         triggerQueueProcessing()
         return id
     }
@@ -270,6 +280,7 @@ class AiQueueManager private constructor(private val context: Context) {
         }
 
         updateItemEntitlement(pendingItem.id, consumed)
+        PixenseAnalytics.logEvent("ai_processing_started", mapOf("feature" to pendingItem.operation.analyticsTag))
         when (consumed) {
             EntitlementType.FREE -> PixenseAnalytics.logEvent("free_enhancement_started")
             EntitlementType.REWARDED -> PixenseAnalytics.logEvent("rewarded_enhancement_started")
@@ -284,13 +295,14 @@ class AiQueueManager private constructor(private val context: Context) {
             // 2. Gemini 4K Vision Remastering & Scene/Text Detection
             updateItemStatus(
                 pendingItem.id,
-                QueueItemStatus.InProgress("Gemini 4K AI analyzing scene & remastering photo…"),
+                QueueItemStatus.InProgress(pendingItem.operation.statusMessage),
                 0.4f
             )
             val enhancementResult = GeminiVisionServiceNew.enhanceAndAnalyze(
                 context = context,
                 bitmap = originalBitmap,
                 preset = pendingItem.preset,
+                operation = pendingItem.operation,
                 cacheKey = "${pendingItem.photo.uri}_${pendingItem.photo.sizeBytes}",
                 onStageProgress = { progressText ->
                     updateItemStatus(pendingItem.id, QueueItemStatus.InProgress(progressText), 0.65f)
@@ -343,6 +355,7 @@ class AiQueueManager private constructor(private val context: Context) {
                 1.0f
             )
             Log.d(TAG, "Queue item ${pendingItem.id} completed successfully and saved to Gallery: $savedUri")
+            PixenseAnalytics.logEvent("ai_processing_success", mapOf("feature" to pendingItem.operation.analyticsTag))
 
             // Log completion event
             when (consumed) {
@@ -351,6 +364,7 @@ class AiQueueManager private constructor(private val context: Context) {
             }
 
         } catch (e: kotlinx.coroutines.CancellationException) {
+            PixenseAnalytics.logEvent("ai_processing_failed", mapOf("feature" to pendingItem.operation.analyticsTag, "reason" to "cancelled"))
             if (consumed == EntitlementType.REWARDED) {
                 quotaManager.refundRewardedEnhancement()
             }

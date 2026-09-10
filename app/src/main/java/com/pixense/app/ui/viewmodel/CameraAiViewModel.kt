@@ -19,6 +19,7 @@ import com.pixense.app.data.db.AppDatabase
 import com.pixense.app.data.db.EnhancedPhotoEntity
 import com.pixense.app.data.image.ImageProcessingEngine
 import com.pixense.app.data.model.AiPhotoAnalysis
+import com.pixense.app.data.model.AiPhotoOperation
 import com.pixense.app.data.analytics.PixenseAnalytics
 import com.pixense.app.data.model.CameraPhoto
 import com.pixense.app.data.model.EnhancementPreset
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class StudioTab {
+    AI_TOOLS,
     STUDIO,
     GALLERY,
     QUEUE,
@@ -123,9 +125,18 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     val enhancedPhotos: StateFlow<List<EnhancedPhotoEntity>> = dao.getAllEnhancedPhotos()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Active Navigation Tab
-    private val _currentTab = MutableStateFlow(StudioTab.STUDIO)
+    // Active Navigation Tab (Default: AI Tools Dashboard)
+    private val _currentTab = MutableStateFlow(StudioTab.AI_TOOLS)
     val currentTab: StateFlow<StudioTab> = _currentTab.asStateFlow()
+
+    // Selected AI Photo Operation (Fix, Clean, Unblur, Restore)
+    private val _selectedOperation = MutableStateFlow(AiPhotoOperation.FIX)
+    val selectedOperation: StateFlow<AiPhotoOperation> = _selectedOperation.asStateFlow()
+
+    fun selectOperation(operation: AiPhotoOperation) {
+        _selectedOperation.value = operation
+        PixenseAnalytics.logEvent("ai_feature_selected", mapOf("feature" to operation.analyticsTag))
+    }
 
     // Preset Selection (Unified Auto Intelligent Enhancement)
     private val _selectedPreset = MutableStateFlow(EnhancementPreset.AUTO)
@@ -144,8 +155,8 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
 
-    // In-App CameraX Screen Overlay State (Launcher screen on app start)
-    private val _isCameraOpen = MutableStateFlow(true)
+    // In-App CameraX Screen Overlay State (AI Tools Dashboard is default launcher screen on app start)
+    private val _isCameraOpen = MutableStateFlow(false)
     val isCameraOpen: StateFlow<Boolean> = _isCameraOpen.asStateFlow()
 
     // Selected Gallery Photo for Detail & Re-Enhance Inspection
@@ -253,15 +264,40 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun enhanceSpecificPhoto(photo: CameraPhoto) {
+    fun onPhotoSelectedFromPicker(uri: Uri, operation: AiPhotoOperation = _selectedOperation.value) {
+        _selectedOperation.value = operation
+        PixenseAnalytics.logEvent("ai_feature_selected", mapOf("feature" to operation.analyticsTag))
+        PixenseAnalytics.logEvent("ai_image_selected", mapOf("feature" to operation.analyticsTag, "uri" to uri.toString()))
+        viewModelScope.launch {
+            val photo = repository.queryPhotoByUri(uri)
+            if (photo != null) {
+                repository.setLatestPhoto(photo)
+                _previewPhoto.value = photo
+                // Immediately start the corresponding operation in the preview overlay
+                enhanceSpecificPhotoWithOperation(photo, operation)
+            } else {
+                _saveStatusMessage.value = "Failed to load selected photo from picker."
+            }
+        }
+    }
+
+    fun enhanceSpecificPhotoWithOperation(photo: CameraPhoto, operation: AiPhotoOperation) {
+        _selectedOperation.value = operation
         repository.setLatestPhoto(photo)
-        PixenseAnalytics.logEvent("enhance_specific_photo_clicked", mapOf("display_name" to photo.displayName))
+        PixenseAnalytics.logEvent(
+            "enhance_specific_photo_clicked",
+            mapOf("display_name" to photo.displayName, "feature" to operation.analyticsTag)
+        )
         if (quotaManager.hasAvailableEntitlement()) {
-            queueManager.enqueue(photo, EnhancementPreset.AUTO, force = true)
-            _saveStatusMessage.value = "Added \"${photo.displayName}\" to Gemini AI Queue!"
+            queueManager.enqueue(photo, EnhancementPreset.AUTO, operation = operation, force = true)
+            _saveStatusMessage.value = "${operation.title}: Added \"${photo.displayName}\" to Gemini AI Queue!"
         } else {
             _pendingAdEnhancementPhoto.value = photo
         }
+    }
+
+    fun enhanceSpecificPhoto(photo: CameraPhoto) {
+        enhanceSpecificPhotoWithOperation(photo, _selectedOperation.value)
     }
 
     fun selectTab(tab: StudioTab) {
@@ -340,7 +376,12 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
         }
 
         viewModelScope.launch {
-            _enhancementState.value = EnhancementUiState.Processing("Gemini LLM analyzing scene (portrait, low light, food, texture)…")
+            val op = _selectedOperation.value
+            PixenseAnalytics.logEvent("ai_processing_started", mapOf("feature" to op.analyticsTag))
+            _enhancementState.value = EnhancementUiState.Processing(
+                stage = op.statusMessage,
+                operation = op
+            )
 
             val consumed = quotaManager.consumeEntitlement()
             if (consumed == null) {
@@ -356,6 +397,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
             val originalBitmap = repository.loadBitmap(photo.uri)
             if (originalBitmap == null) {
+                PixenseAnalytics.logEvent("ai_processing_failed", mapOf("feature" to op.analyticsTag, "reason" to "decode_failed"))
                 _enhancementState.value = EnhancementUiState.Error("Failed to decode camera photo file from storage.")
                 if (consumed == EntitlementType.REWARDED) {
                     quotaManager.refundRewardedEnhancement()
@@ -374,9 +416,13 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     context = context,
                     bitmap = originalBitmap,
                     preset = EnhancementPreset.AUTO,
+                    operation = op,
                     cacheKey = "${photo.uri}_${photo.sizeBytes}",
                     onStageProgress = { progressText ->
-                        _enhancementState.value = EnhancementUiState.Processing(progressText)
+                        _enhancementState.value = EnhancementUiState.Processing(
+                            stage = progressText,
+                            operation = op
+                        )
                     }
                 )
 
@@ -393,8 +439,10 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     originalBitmap = originalBitmap,
                     enhancedBitmap = finalEnhancedBitmap,
                     analysis = analysis,
-                    preset = EnhancementPreset.AUTO
+                    preset = EnhancementPreset.AUTO,
+                    operation = op
                 )
+                PixenseAnalytics.logEvent("ai_processing_success", mapOf("feature" to op.analyticsTag))
 
                 // Auto save to Gallery & Database
                 val savedUri = repository.saveEnhancedBitmap(finalEnhancedBitmap, photo.displayName)
@@ -533,6 +581,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                 dao.insert(entity)
                 queueManager.markPhotoAsProcessed(currentPhoto)
                 repository.markUriAsEnhanced(savedUri, entity.enhancedDisplayName)
+                PixenseAnalytics.logEvent("ai_result_saved", mapOf("feature" to _selectedOperation.value.analyticsTag))
                 _saveStatusMessage.value = "Enhanced photo saved to Pictures/Camera_AI and AI Gallery!"
             } else {
                 _saveStatusMessage.value = "Failed to save photo to storage."

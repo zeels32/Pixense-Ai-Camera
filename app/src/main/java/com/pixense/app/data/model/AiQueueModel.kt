@@ -14,6 +14,7 @@ data class EnhancementQueueItem(
     val id: String,
     val photo: CameraPhoto,
     val preset: EnhancementPreset,
+    val operation: AiPhotoOperation = AiPhotoOperation.FIX,
     val status: QueueItemStatus = QueueItemStatus.Pending,
     val progress: Float = 0f,
     val queuedAt: Long = System.currentTimeMillis(),

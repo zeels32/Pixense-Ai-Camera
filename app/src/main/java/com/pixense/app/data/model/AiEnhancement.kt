@@ -138,12 +138,17 @@ data class AiPhotoAnalysis(
 sealed interface EnhancementUiState {
     data object Idle : EnhancementUiState
     data class Detecting(val message: String = "Gemini LLM analyzing scene & subject characteristics…") : EnhancementUiState
-    data class Processing(val stage: String, val detectedScene: DetectedSceneCategory? = null) : EnhancementUiState
+    data class Processing(
+        val stage: String,
+        val detectedScene: DetectedSceneCategory? = null,
+        val operation: AiPhotoOperation? = null
+    ) : EnhancementUiState
     data class Success(
         val originalBitmap: Bitmap,
         val enhancedBitmap: Bitmap,
         val analysis: AiPhotoAnalysis,
-        val preset: EnhancementPreset = EnhancementPreset.AUTO
+        val preset: EnhancementPreset = EnhancementPreset.AUTO,
+        val operation: AiPhotoOperation? = null
     ) : EnhancementUiState
     data class Error(val message: String) : EnhancementUiState
 }

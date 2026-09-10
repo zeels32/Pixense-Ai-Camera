@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import com.pixense.app.data.model.CameraPhoto
 import com.pixense.app.util.PermissionUtils
@@ -447,6 +448,7 @@ class CameraCaptureRepository(private val context: Context) {
     }
 
     suspend fun queryPhotoByUri(uri: Uri): CameraPhoto? = withContext(Dispatchers.IO) {
+        // 1. First attempt standard MediaStore projection query
         try {
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
@@ -473,22 +475,74 @@ class CameraCaptureRepository(private val context: Context) {
                     return@withContext cursorToPhoto(cursor)
                 }
             }
-            // Fallback object if cursor query was empty
+        } catch (e: Exception) {
+            Log.d("CameraRepository", "MediaStore projection not supported for URI: $uri (e.g. Photo Picker / Document provider). Using generic openable query.")
+        }
+
+        // 2. Safe fallback query for modern Android Photo Picker and Document Provider URIs
+        try {
+            var displayName = "IMG_${System.currentTimeMillis()}.jpg"
+            var sizeBytes = 0L
+
+            try {
+                contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIdx != -1 && !cursor.isNull(nameIdx)) {
+                            displayName = cursor.getString(nameIdx) ?: displayName
+                        }
+                        val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (sizeIdx != -1 && !cursor.isNull(sizeIdx)) {
+                            sizeBytes = cursor.getLong(sizeIdx)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d("CameraRepository", "Could not read OpenableColumns for $uri: ${e.message}")
+            }
+
+            // Decode image bounds safely without reading full bitmap into memory
+            var width = 1920
+            var height = 1080
+            var mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+
+            try {
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeStream(stream, null, opts)
+                    if (opts.outWidth > 0 && opts.outHeight > 0) {
+                        width = opts.outWidth
+                        height = opts.outHeight
+                    }
+                    if (!opts.outMimeType.isNullOrBlank()) {
+                        mimeType = opts.outMimeType
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d("CameraRepository", "Could not decode bounds for $uri: ${e.message}")
+            }
+
             val id = try { ContentUris.parseId(uri) } catch (_: Exception) { System.currentTimeMillis() }
-            CameraPhoto(
+            return@withContext CameraPhoto(
                 id = id,
                 uri = uri,
-                displayName = "IMG_${System.currentTimeMillis()}.jpg",
+                displayName = displayName,
                 dateTaken = System.currentTimeMillis(),
-                sizeBytes = 0L,
-                width = 1920,
-                height = 1080,
-                mimeType = "image/jpeg",
-                relativePath = "DCIM/Camera",
-                bucketDisplayName = "Camera"
+                sizeBytes = sizeBytes,
+                width = width,
+                height = height,
+                mimeType = mimeType,
+                relativePath = "Photos",
+                bucketDisplayName = "Photo Picker"
             )
         } catch (e: Exception) {
-            Log.e("CameraRepository", "Error querying photo by URI: $uri", e)
+            Log.e("CameraRepository", "Failed to query photo by URI: $uri", e)
             null
         }
     }

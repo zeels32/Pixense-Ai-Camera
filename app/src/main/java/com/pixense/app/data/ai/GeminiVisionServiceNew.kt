@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.LruCache
 import com.pixense.app.BuildConfig
 import com.pixense.app.data.model.AiPhotoAnalysis
+import com.pixense.app.data.model.AiPhotoOperation
 import com.pixense.app.data.model.DetectedSceneCategory
 import com.pixense.app.data.model.EnhancementPreset
 import com.pixense.app.data.model.SceneDetectionResult
@@ -293,14 +294,17 @@ object GeminiVisionServiceNew {
      * - Does NOT use local pixel-sampling heuristics.
      */
     suspend fun enhanceAndAnalyze(
+
         context: Context,
         bitmap: Bitmap,
         preset: EnhancementPreset = EnhancementPreset.AUTO,
+        operation: AiPhotoOperation = AiPhotoOperation.FIX,
         cacheKey: String? = null,
         onStageProgress: ((String) -> Unit)? = null
     ): GeminiEnhancementResult = withContext(Dispatchers.IO) {
-        if (!cacheKey.isNullOrBlank()) {
-            val cached = resultCache.get(cacheKey)
+        val effectiveCacheKey = if (!cacheKey.isNullOrBlank()) "${cacheKey}_${operation.name}" else null
+        if (!effectiveCacheKey.isNullOrBlank()) {
+            val cached = resultCache.get(effectiveCacheKey)
             if (cached != null) {
                 Log.d(TAG, "Serving Gemini restoration result from in-memory cache")
                 return@withContext cached
@@ -313,11 +317,11 @@ object GeminiVisionServiceNew {
 
         val apiKey = getApiKey()
 
-        onStageProgress?.invoke("Gemini 4K AI analyzing scene, text & remastering photo…")
+        onStageProgress?.invoke(operation.statusMessage)
 
         try {
             val base64Image = scaleAndEncodeBitmap(bitmap, maxDimension = 1920, quality = 95)
-            val promptText = buildUnifiedEnhancementPrompt(bitmap.width, bitmap.height)
+            val promptText = AiPhotoPrompts.getPromptForOperation(operation, bitmap.width, bitmap.height)
             val closestAspect = determineClosestAspectRatio(bitmap.width, bitmap.height)
 
             var lastException: Exception? = null
@@ -411,8 +415,8 @@ object GeminiVisionServiceNew {
                 detection = detection
             )
 
-            if (!cacheKey.isNullOrBlank()) {
-                resultCache.put(cacheKey, result)
+            if (!effectiveCacheKey.isNullOrBlank()) {
+                resultCache.put(effectiveCacheKey, result)
             }
 
             return@withContext result
