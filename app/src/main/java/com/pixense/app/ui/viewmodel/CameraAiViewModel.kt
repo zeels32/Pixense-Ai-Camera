@@ -1,5 +1,6 @@
 package com.pixense.app.ui.viewmodel
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,7 @@ import com.pixense.app.data.repository.EnhancementQuotaManager
 import com.pixense.app.data.repository.EntitlementType
 import com.pixense.app.data.repository.QuotaState
 import com.pixense.app.data.repository.RewardedAdManager
+import com.pixense.app.data.repository.RewardedInterstitialAdManager
 import com.pixense.app.service.CameraCaptureService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -61,6 +63,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     private val quotaManager = EnhancementQuotaManager.getInstance(application)
     private val rewardedAdManager = RewardedAdManager.getInstance(application)
+    private val rewardedInterstitialAdManager = RewardedInterstitialAdManager.getInstance(application)
 
     // Quota State
     val quotaState: StateFlow<QuotaState> = quotaManager.quotaState
@@ -73,8 +76,16 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     val isAdLoaded: StateFlow<Boolean> = rewardedAdManager.isAdLoaded
     val isAdLoading: StateFlow<Boolean> = rewardedAdManager.isLoading
 
+    // State flow for Rewarded Interstitial Ad (AI Gallery preview)
+    val isRewardedInterstitialLoaded: StateFlow<Boolean> = rewardedInterstitialAdManager.isAdLoaded
+    val isRewardedInterstitialLoading: StateFlow<Boolean> = rewardedInterstitialAdManager.isLoading
+
     fun refreshAdStatus() {
         rewardedAdManager.loadAd()
+    }
+
+    fun preloadRewardedInterstitialAd() {
+        rewardedInterstitialAdManager.loadAd()
     }
 
     fun dismissAdPrompt() {
@@ -576,6 +587,34 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     // AI Gallery Interactions
     fun selectGalleryPhoto(photo: EnhancedPhotoEntity?) {
         _selectedGalleryPhoto.value = photo
+    }
+
+    /**
+     * Opens the enhanced photo preview from the AI Gallery.
+     * If an AdMob Rewarded Interstitial Ad is loaded and an Activity is provided,
+     * the ad is presented first; upon dismissal/completion, the photo preview opens.
+     * If the ad is not ready or fails, the photo preview opens immediately to avoid blocking the user.
+     */
+    fun openEnhancedPhotoWithAd(activity: Activity?, photo: EnhancedPhotoEntity) {
+        PixenseAnalytics.logEvent(
+            "gallery_preview_requested_with_ad",
+            mapOf("photo_id" to photo.id, "scene" to photo.sceneType)
+        )
+        if (activity != null && rewardedInterstitialAdManager.isAdLoaded()) {
+            rewardedInterstitialAdManager.showAd(
+                activity = activity,
+                onRewardEarned = {
+                    PixenseAnalytics.logEvent("gallery_preview_ad_reward_earned", mapOf("photo_id" to photo.id))
+                },
+                onAdDismissed = {
+                    _selectedGalleryPhoto.value = photo
+                }
+            )
+        } else {
+            // Proceed directly to preview so the user experience is smooth, and preload for next time
+            _selectedGalleryPhoto.value = photo
+            rewardedInterstitialAdManager.loadAd()
+        }
     }
 
     fun deleteEnhancedPhoto(photo: EnhancedPhotoEntity) {

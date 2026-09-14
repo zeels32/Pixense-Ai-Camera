@@ -32,6 +32,12 @@ android {
         // Read proAdUnitId from local.properties
         val proAdUnitId = localProperties.getProperty("proAdUnitId")
         buildConfigField("String", "PRO_AD_UNIT_ID", "\"$proAdUnitId\"")
+
+        // Read rewardedInterstitialAdUnitId from local.properties (defaults to proAdUnitId if not specified)
+        val rewardedInterstitialAdUnitId = localProperties.getProperty("rewardedInterstitialAdUnitId")
+            ?: localProperties.getProperty("proAdUnitId")
+            ?: ""
+        buildConfigField("String", "REWARDED_INTERSTITIAL_AD_UNIT_ID", "\"$rewardedInterstitialAdUnitId\"")
     }
 
     signingConfigs {

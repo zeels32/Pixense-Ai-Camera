@@ -1,5 +1,6 @@
 package com.pixense.app.ui.screen
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -103,6 +104,12 @@ fun AiGalleryScreen(
     val enhancedPhotos by viewModel.enhancedPhotos.collectAsState()
     val selectedPhoto by viewModel.selectedGalleryPhoto.collectAsState()
     val context = LocalContext.current
+    val activity = context as? Activity
+
+    // Proactively preload Rewarded Interstitial Ad when viewing AI Gallery
+    LaunchedEffect(Unit) {
+        viewModel.preloadRewardedInterstitialAd()
+    }
 
     var selectedSceneFilter by remember { mutableStateOf<String?>(null) }
 
@@ -334,7 +341,9 @@ fun AiGalleryScreen(
                     items(displayedPhotos, key = { it.id }) { photo ->
                         GalleryPhotoCard(
                             photo = photo,
-                            onClick = { viewModel.selectGalleryPhoto(photo) }
+                            onClick = {
+                                viewModel.openEnhancedPhotoWithAd(activity, photo)
+                            }
                         )
                     }
 
