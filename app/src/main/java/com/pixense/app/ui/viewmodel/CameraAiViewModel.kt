@@ -14,7 +14,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.pixense.app.data.ai.GeminiApiException
-import com.pixense.app.data.ai.GeminiVisionServiceNew
+import com.pixense.app.data.ai.GeminiVisionService
 import com.pixense.app.data.db.AppDatabase
 import com.pixense.app.data.db.EnhancedPhotoEntity
 import com.pixense.app.data.image.ImageProcessingEngine
@@ -370,7 +370,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
             try {
                 // Unified Single-Pass Gemini 4K Pipeline:
                 // Single gemini-3.1-flash-image model detects scene & text and remasters in 4K resolution
-                val enhancementResult = GeminiVisionServiceNew.enhanceAndAnalyze(
+                val enhancementResult = GeminiVisionService.enhanceAndAnalyze(
                     context = context,
                     bitmap = originalBitmap,
                     preset = EnhancementPreset.AUTO,

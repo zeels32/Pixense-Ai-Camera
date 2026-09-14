@@ -553,7 +553,7 @@ object GeminiVisionService {
                 put("generationConfig", JSONObject().apply {
                     put("temperature", 0.2)
                     put("topP", 0.9)
-                    put("maxOutputTokens", 2048)
+                    put("maxOutputTokens", 2520)
                     put("responseModalities", JSONArray().apply {
                         put("IMAGE")
                         put("TEXT")
@@ -697,7 +697,7 @@ object GeminiVisionService {
         }
 
         val outputStream = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 

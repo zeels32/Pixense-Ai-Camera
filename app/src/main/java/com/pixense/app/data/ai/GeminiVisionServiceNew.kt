@@ -518,7 +518,7 @@ object GeminiVisionServiceNew {
     }
 
     private fun scaleAndEncodeBitmap(bitmap: Bitmap, maxDimension: Int, quality: Int = 95): String {
-        val scale = minOf(
+        /*val scale = minOf(
             maxDimension.toFloat() / bitmap.width,
             maxDimension.toFloat() / bitmap.height,
             1.0f
@@ -532,10 +532,10 @@ object GeminiVisionServiceNew {
             )
         } else {
             bitmap
-        }
+        }*/
 
         val outputStream = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(50, 100), outputStream)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 }

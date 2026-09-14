@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.util.Log
 import com.pixense.app.data.ai.GeminiApiException
-import com.pixense.app.data.ai.GeminiVisionServiceNew
+import com.pixense.app.data.ai.GeminiVisionService
 import com.pixense.app.data.analytics.PixenseAnalytics
 import com.pixense.app.service.CameraCaptureService
 import com.pixense.app.data.db.AppDatabase
@@ -287,7 +287,7 @@ class AiQueueManager private constructor(private val context: Context) {
                 QueueItemStatus.InProgress("Gemini 4K AI analyzing scene & remastering photo…"),
                 0.4f
             )
-            val enhancementResult = GeminiVisionServiceNew.enhanceAndAnalyze(
+            val enhancementResult = GeminiVisionService.enhanceAndAnalyze(
                 context = context,
                 bitmap = originalBitmap,
                 preset = pendingItem.preset,
