@@ -329,19 +329,21 @@ private fun CameraViewContent(
 
                 // Safe hardware ISP enhancements (OIS, chromatic aberration correction, distortion correction)
                 // Note: Auto White Balance and Tonemapping are managed by CameraX & ISP to match viewfinder vibrancy
-                val camera2Extender = Camera2Interop.Extender(captureBuilder)
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
-                    CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
-                    CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY
-                )
-                camera2Extender.setCaptureRequestOption(
-                    CaptureRequest.DISTORTION_CORRECTION_MODE,
-                    CaptureRequest.DISTORTION_CORRECTION_MODE_HIGH_QUALITY
-                )
+                    if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
+                        val camera2Extender = Camera2Interop.Extender(captureBuilder)
+                        camera2Extender.setCaptureRequestOption(
+                            CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
+                            CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON
+                        )
+                        camera2Extender.setCaptureRequestOption(
+                            CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
+                            CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY
+                        )
+                        camera2Extender.setCaptureRequestOption(
+                            CaptureRequest.DISTORTION_CORRECTION_MODE,
+                            CaptureRequest.DISTORTION_CORRECTION_MODE_HIGH_QUALITY
+                        )
+                    }
 
                 val capture = captureBuilder.build()
 
@@ -450,10 +452,15 @@ private fun CameraViewContent(
                             detectTapGestures(
                                 onDoubleTap = {
                                     if (detectedLenses.size > 1) {
-                                        val currentIndex = detectedLenses.indexOfFirst { kotlin.math.abs(it.ratio - currentZoomRatio) < 0.12f }
-                                        val nextIndex = if (currentIndex == -1 || currentIndex == detectedLenses.size - 1) 0 else currentIndex + 1
+                                        val currentIndex =
+                                            detectedLenses.indexOfFirst { kotlin.math.abs(it.ratio - currentZoomRatio) < 0.12f }
+                                        val nextIndex =
+                                            if (currentIndex == -1 || currentIndex == detectedLenses.size - 1) 0 else currentIndex + 1
                                         val nextLens = detectedLenses[nextIndex]
-                                        setZoom(nextLens.ratio, "${nextLens.label} • ${nextLens.lensName}")
+                                        setZoom(
+                                            nextLens.ratio,
+                                            "${nextLens.label} • ${nextLens.lensName}"
+                                        )
                                     }
                                 },
                                 onTap = { offset ->
@@ -493,7 +500,10 @@ private fun CameraViewContent(
                         }
                         .pointerInput(minZoomRatio, maxZoomRatio) {
                             detectTransformGestures { _, _, zoomFactor, _ ->
-                                val newZoom = (currentZoomRatio * zoomFactor).coerceIn(minZoomRatio, maxZoomRatio)
+                                val newZoom = (currentZoomRatio * zoomFactor).coerceIn(
+                                    minZoomRatio,
+                                    maxZoomRatio
+                                )
                                 currentZoomRatio = newZoom
                                 camera?.cameraControl?.setZoomRatio(newZoom)
                             }
@@ -581,7 +591,8 @@ private fun CameraViewContent(
                                     onDragStart = { offset ->
                                         restartDismissTimer()
                                         val frac = 1f - (offset.y / trackHeightPx).coerceIn(0f, 1f)
-                                        val newIndex = (minExposureIndex + frac * rangeSpan).roundToInt()
+                                        val newIndex =
+                                            (minExposureIndex + frac * rangeSpan).roundToInt()
                                         setExposure(newIndex)
                                     },
                                     onDrag = { change, _ ->
@@ -589,7 +600,8 @@ private fun CameraViewContent(
                                         restartDismissTimer()
                                         val touchY = change.position.y
                                         val frac = 1f - (touchY / trackHeightPx).coerceIn(0f, 1f)
-                                        val newIndex = (minExposureIndex + frac * rangeSpan).roundToInt()
+                                        val newIndex =
+                                            (minExposureIndex + frac * rangeSpan).roundToInt()
                                         setExposure(newIndex)
                                     },
                                     onDragEnd = {
@@ -636,7 +648,12 @@ private fun CameraViewContent(
                         // Luminous Sun Handle Thumb on Single Slider Track
                         Box(
                             modifier = Modifier
-                                .offset(y = (thumbOffsetYDp - 13.dp).coerceIn(0.dp, trackHeightDp - 26.dp))
+                                .offset(
+                                    y = (thumbOffsetYDp - 13.dp).coerceIn(
+                                        0.dp,
+                                        trackHeightDp - 26.dp
+                                    )
+                                )
                                 .size(26.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFFFD700))
@@ -996,8 +1013,12 @@ private fun CameraViewContent(
                                 CameraSelector.LENS_FACING_BACK
                             }
                             lensFacing = newFacing
-                            val facingStr = if (newFacing == CameraSelector.LENS_FACING_FRONT) "FRONT" else "BACK"
-                            PixenseAnalytics.logEvent("camera_lens_flipped", mapOf("facing" to facingStr))
+                            val facingStr =
+                                if (newFacing == CameraSelector.LENS_FACING_FRONT) "FRONT" else "BACK"
+                            PixenseAnalytics.logEvent(
+                                "camera_lens_flipped",
+                                mapOf("facing" to facingStr)
+                            )
                             PixenseAnalytics.setCustomKey("camera_facing", facingStr)
                             exposureIndex = 0
                         }
