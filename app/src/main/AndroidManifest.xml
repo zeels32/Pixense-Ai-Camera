@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/toolsi">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions for Reading Camera/Gallery Images -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -12,12 +12,10 @@
         android:maxSdkVersion="28"
         tools:ignore="ScopedStorage" />
 
-    <!-- Foreground Service Permissions -->
-    <!--    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />-->
-    <!--    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />-->
+    <!-- Foreground Service & Push Notification Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Network for AI enhancement -->
+    <!-- Network for AI enhancement & Firebase Messaging -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -47,6 +45,15 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1464253620326405~7277242792" />
+
+        <!-- Firebase Cloud Messaging Defaults -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="update_app_channel" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_app_icon_bg" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -57,13 +64,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.pixense.app.ACTION_UPDATE_APP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
-        <!-- Background Service for detecting newly captured camera photos -->
-        <!--<service
-            android:name=".service.CameraCaptureService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />-->
+        <!-- Firebase Cloud Messaging Service -->
+        <service
+            android:name=".service.PixenseFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

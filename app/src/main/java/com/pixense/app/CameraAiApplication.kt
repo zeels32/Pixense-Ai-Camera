@@ -8,6 +8,7 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 
 import com.pixense.app.data.analytics.PixenseAnalytics
+import com.pixense.app.util.NotificationHelper
 
 class CameraAiApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
@@ -18,6 +19,10 @@ class CameraAiApplication : Application(), ImageLoaderFactory {
         PixenseAnalytics.setCustomKey("build_type", BuildConfig.BUILD_TYPE)
         PixenseAnalytics.logBreadcrumb("CameraAiApplication onCreate completed")
         PixenseAnalytics.logEvent("app_open")
+
+        // Initialize Update App notification channel and FCM topic subscriptions
+        NotificationHelper.createNotificationChannels(this)
+        NotificationHelper.subscribeToUpdateTopics()
         /*try {
             CameraCaptureService.start(this)
             Log.d("CameraAiApplication", "CameraCaptureService auto-started")

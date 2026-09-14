@@ -19,7 +19,9 @@ android {
         }
     }
     val localProperties = gradleLocalProperties(rootDir, providers)
-
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
     defaultConfig {
         applicationId = "com.pixense.app"
         minSdk = 24
@@ -149,6 +151,8 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.appcheck.recaptcha)
     implementation(libs.firebase.ads)
+    implementation(libs.firebase.messaging)
+    implementation(libs.play.review.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.okhttp)

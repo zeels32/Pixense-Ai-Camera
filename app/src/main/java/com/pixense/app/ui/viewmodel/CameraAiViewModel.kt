@@ -34,12 +34,16 @@ import com.pixense.app.data.repository.EntitlementType
 import com.pixense.app.data.repository.QuotaState
 import com.pixense.app.data.repository.RewardedAdManager
 import com.pixense.app.data.repository.RewardedInterstitialAdManager
+import com.pixense.app.data.model.QueueItemStatus
 import com.pixense.app.service.CameraCaptureService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -67,6 +71,32 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
 
     // Quota State
     val quotaState: StateFlow<QuotaState> = quotaManager.quotaState
+
+    // Google Play In-App Review Flow Trigger
+    private val _reviewPromptTrigger = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val reviewPromptTrigger: SharedFlow<String> = _reviewPromptTrigger.asSharedFlow()
+
+    fun triggerInAppReview(source: String) {
+        _reviewPromptTrigger.tryEmit(source)
+    }
+
+    init {
+        // Observe background AI queue completions and prompt In-App Review when an image completes
+        viewModelScope.launch {
+            var previousCompletedIds = emptySet<String>()
+            queueManager.queue.collect { items ->
+                val currentCompletedIds = items
+                    .filter { it.status is QueueItemStatus.Completed }
+                    .map { it.id }
+                    .toSet()
+                val newlyCompleted = currentCompletedIds - previousCompletedIds
+                if (previousCompletedIds.isNotEmpty() && newlyCompleted.isNotEmpty()) {
+                    triggerInAppReview("image_enhanced")
+                }
+                previousCompletedIds = currentCompletedIds
+            }
+        }
+    }
 
     // State flow for pending ad prompt target
     private val _pendingAdEnhancementPhoto = MutableStateFlow<CameraPhoto?>(null)
@@ -221,6 +251,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     fun onPhotoCaptured(uri: Uri) {
         // Do not close camera on captured photo, keep user in camera session
         PixenseAnalytics.logEvent("camera_photo_captured", mapOf("auto_process" to isAutoProcessEnabled.value))
+        triggerInAppReview("camera_capture")
         viewModelScope.launch {
             val photo = repository.queryPhotoByUri(uri)
             if (photo != null) {
@@ -430,6 +461,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
                     queueManager.markPhotoAsProcessed(photo)
                     repository.markUriAsEnhanced(savedUri, entity.enhancedDisplayName)
                     _saveStatusMessage.value = "Enhanced & saved to AI Gallery (${analysis.sceneType})!"
+                    triggerInAppReview("image_enhanced")
                 }
 
                 when (consumed) {

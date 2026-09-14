@@ -35,6 +35,20 @@ object PermissionUtils {
     }
 
     /**
+     * Checks if notification permission is granted (always true below Android 13).
+     */
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    /**
      * Opens the application's details settings page in Android system settings,
      * allowing the user to manually grant permissions.
      */
