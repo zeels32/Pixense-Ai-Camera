@@ -11,6 +11,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -28,11 +30,11 @@ fun ZoomableAsyncImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     minScale: Float = 1f,
-    maxScale: Float = 4f
+    maxScale: Float = 5f
 ) {
-    var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    var scale by remember(model) { mutableStateOf(1f) }
+    var offsetX by remember(model) { mutableStateOf(0f) }
+    var offsetY by remember(model) { mutableStateOf(0f) }
     val context = LocalContext.current
 
     val imageRequest = remember(model) {
@@ -52,7 +54,8 @@ fun ZoomableAsyncImage(
 
     Box(
         modifier = modifier
-            .pointerInput(Unit) {
+            .clipToBounds()
+            .pointerInput(model) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     val newScale = (scale * zoom).coerceIn(minScale, maxScale)
                     scale = newScale
@@ -66,14 +69,14 @@ fun ZoomableAsyncImage(
                     }
                 }
             }
-            .pointerInput(Unit) {
+            .pointerInput(model) {
                 detectTapGestures(onDoubleTap = {
                     if (scale > minScale) {
                         scale = minScale
                         offsetX = 0f
                         offsetY = 0f
                     } else {
-                        scale = maxScale
+                        scale = 2.5f
                     }
                 })
             }
@@ -82,6 +85,7 @@ fun ZoomableAsyncImage(
             model = imageRequest,
             contentDescription = contentDescription,
             contentScale = contentScale,
+            filterQuality = FilterQuality.High,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {

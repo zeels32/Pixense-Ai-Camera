@@ -530,36 +530,9 @@ object GeminiVisionService {
         onStageProgress?.invoke("Stage 2: Gemini remastering photo tailored to ${detection.category.emoji} ${detection.category.title}…")
 
         try {
-            val base64Image = scaleAndEncodeBitmap(bitmap, maxDimension = 896)
+            val base64Image = scaleAndEncodeBitmap(bitmap, maxDimension = 2048)
             val promptText = buildEnhancementPrompt(detection)
-
-            val jsonBody = JSONObject().apply {
-                val contents = JSONArray().apply {
-                    val contentObj = JSONObject().apply {
-                        val parts = JSONArray().apply {
-                            put(JSONObject().apply { put("text", promptText) })
-                            put(JSONObject().apply {
-                                put("inlineData", JSONObject().apply {
-                                    put("mimeType", "image/jpeg")
-                                    put("data", base64Image)
-                                })
-                            })
-                        }
-                        put("parts", parts)
-                    }
-                    put(contentObj)
-                }
-                put("contents", contents)
-                put("generationConfig", JSONObject().apply {
-                    put("temperature", 0.2)
-                    put("topP", 0.9)
-                    put("maxOutputTokens", 2520)
-                    put("responseModalities", JSONArray().apply {
-                        put("IMAGE")
-                        put("TEXT")
-                    })
-                })
-            }
+            val closestAspect = determineClosestAspectRatio(bitmap.width, bitmap.height)
 
             var lastException: Exception? = null
             var returnedBitmap: Bitmap? = null
@@ -571,13 +544,40 @@ object GeminiVisionService {
                 while (attempt < maxAttemptsForModel) {
                     attempt++
                     try {
-                        val url = "$BASE_URL/$modelName:generateContent?key=$apiKey"
-                        val request = Request.Builder()
+                        var currentSizeConfig: String? = if (modelName == "gemini-3.1-flash-image") "4K" else null
+                        var jsonBody = buildRequestBody(promptText, base64Image, closestAspect, currentSizeConfig)
+
+                        var url = "$BASE_URL/$modelName:generateContent?key=$apiKey"
+                        var request = Request.Builder()
                             .url(url)
                             .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
                             .build()
 
-                        val response = client.newCall(request).execute()
+                        var response = client.newCall(request).execute()
+
+                        // If 4K imageConfig is rejected (e.g. HTTP 400), retry with 2K or standard config
+                        if (response.code == 400 && currentSizeConfig != null) {
+                            Log.w(TAG, "imageConfig $currentSizeConfig rejected on $modelName, retrying with 2K...")
+                            currentSizeConfig = "2K"
+                            jsonBody = buildRequestBody(promptText, base64Image, closestAspect, currentSizeConfig)
+                            request = Request.Builder()
+                                .url(url)
+                                .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+                                .build()
+                            response = client.newCall(request).execute()
+
+                            if (response.code == 400) {
+                                Log.w(TAG, "imageConfig 2K rejected on $modelName, retrying with standard config...")
+                                currentSizeConfig = null
+                                jsonBody = buildRequestBody(promptText, base64Image, closestAspect, null)
+                                request = Request.Builder()
+                                    .url(url)
+                                    .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
+                                    .build()
+                                response = client.newCall(request).execute()
+                            }
+                        }
+
                         if (!response.isSuccessful) {
                             val errBody = response.body?.string() ?: response.message
                             if (response.code == 429) {
@@ -631,7 +631,7 @@ object GeminiVisionService {
                         }
 
                         if (returnedBitmap != null) {
-                            Log.d(TAG, "Successfully restored image with model $modelName")
+                            Log.d(TAG, "Successfully restored image with model $modelName ($currentSizeConfig)")
                             break@modelLoop
                         }
                     } catch (e: GeminiApiException) {
@@ -679,25 +679,101 @@ object GeminiVisionService {
         }
     }
 
-    private fun scaleAndEncodeBitmap(bitmap: Bitmap, maxDimension: Int): String {
-        val scale = minOf(
-            maxDimension.toFloat() / bitmap.width,
-            maxDimension.toFloat() / bitmap.height,
-            1.0f
+    /**
+     * Determines closest aspect ratio supported by Gemini imageConfig.
+     */
+    fun determineClosestAspectRatio(width: Int, height: Int): String {
+        if (width <= 0 || height <= 0) return "1:1"
+        val ratio = width.toFloat() / height.toFloat()
+
+        val supportedRatios = listOf(
+            "1:1" to 1.0f,
+            "4:3" to 4f / 3f,     // 1.333f
+            "3:4" to 3f / 4f,     // 0.75f
+            "16:9" to 16f / 9f,   // 1.778f
+            "9:16" to 9f / 16f,   // 0.5625f
+            "3:2" to 3f / 2f,     // 1.5f
+            "2:3" to 2f / 3f,     // 0.667f
+            "21:9" to 21f / 9f    // 2.333f
         )
-        val scaled = if (scale < 1.0f) {
-            Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * scale).toInt(),
-                (bitmap.height * scale).toInt(),
-                true
-            )
+
+        return supportedRatios.minByOrNull { kotlin.math.abs(it.second - ratio) }?.first ?: "1:1"
+    }
+
+    private fun buildRequestBody(
+        promptText: String,
+        base64Image: String,
+        aspectRatio: String,
+        imageSizeConfig: String?
+    ): JSONObject {
+        return JSONObject().apply {
+            val contents = JSONArray().apply {
+                val contentObj = JSONObject().apply {
+                    val parts = JSONArray().apply {
+                        put(JSONObject().apply { put("text", promptText) })
+                        put(JSONObject().apply {
+                            put("inlineData", JSONObject().apply {
+                                put("mimeType", "image/jpeg")
+                                put("data", base64Image)
+                            })
+                        })
+                    }
+                    put("parts", parts)
+                }
+                put(contentObj)
+            }
+            put("contents", contents)
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.2)
+                put("topP", 0.9)
+                put("maxOutputTokens", 2520)
+                put("responseModalities", JSONArray().apply {
+                    put("IMAGE")
+                    put("TEXT")
+                })
+                if (!imageSizeConfig.isNullOrBlank()) {
+                    put("imageConfig", JSONObject().apply {
+                        put("imageSize", imageSizeConfig)
+                        put("aspectRatio", aspectRatio)
+                    })
+                }
+            })
+        }
+    }
+
+    private fun scaleAndEncodeBitmap(bitmap: Bitmap, maxDimension: Int): String {
+        val safeBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
         } else {
             bitmap
         }
 
+        val scale = minOf(
+            maxDimension.toFloat() / safeBitmap.width,
+            maxDimension.toFloat() / safeBitmap.height,
+            1.0f
+        )
+        val scaled = if (scale < 1.0f) {
+            Bitmap.createScaledBitmap(
+                safeBitmap,
+                (safeBitmap.width * scale).toInt().coerceAtLeast(1),
+                (safeBitmap.height * scale).toInt().coerceAtLeast(1),
+                true
+            )
+        } else {
+            safeBitmap
+        }
+
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
+
+        if (scaled !== safeBitmap && !scaled.isRecycled) {
+            scaled.recycle()
+        }
+        if (safeBitmap !== bitmap && !safeBitmap.isRecycled) {
+            safeBitmap.recycle()
+        }
+
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 

@@ -518,24 +518,38 @@ object GeminiVisionServiceNew {
     }
 
     private fun scaleAndEncodeBitmap(bitmap: Bitmap, maxDimension: Int, quality: Int = 95): String {
-        /*val scale = minOf(
-            maxDimension.toFloat() / bitmap.width,
-            maxDimension.toFloat() / bitmap.height,
+        val safeBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            bitmap
+        }
+
+        val scale = minOf(
+            maxDimension.toFloat() / safeBitmap.width,
+            maxDimension.toFloat() / safeBitmap.height,
             1.0f
         )
         val scaled = if (scale < 1.0f) {
             Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * scale).toInt(),
-                (bitmap.height * scale).toInt(),
+                safeBitmap,
+                (safeBitmap.width * scale).toInt().coerceAtLeast(1),
+                (safeBitmap.height * scale).toInt().coerceAtLeast(1),
                 true
             )
         } else {
-            bitmap
-        }*/
+            safeBitmap
+        }
 
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+        scaled.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+
+        if (scaled !== safeBitmap && !scaled.isRecycled) {
+            scaled.recycle()
+        }
+        if (safeBitmap !== bitmap && !safeBitmap.isRecycled) {
+            safeBitmap.recycle()
+        }
+
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 }

@@ -524,6 +524,8 @@ class CameraCaptureRepository(private val context: Context) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, newFileName)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(MediaStore.Images.Media.WIDTH, bitmap.width)
+                put(MediaStore.Images.Media.HEIGHT, bitmap.height)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Camera_AI")
                     put(MediaStore.Images.Media.IS_PENDING, 1)
