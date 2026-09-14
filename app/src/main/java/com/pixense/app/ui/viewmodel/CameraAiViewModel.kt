@@ -251,7 +251,7 @@ class CameraAiViewModel(application: Application) : AndroidViewModel(application
     fun onPhotoCaptured(uri: Uri) {
         // Do not close camera on captured photo, keep user in camera session
         PixenseAnalytics.logEvent("camera_photo_captured", mapOf("auto_process" to isAutoProcessEnabled.value))
-        triggerInAppReview("camera_capture")
+//        triggerInAppReview("camera_capture")
         viewModelScope.launch {
             val photo = repository.queryPhotoByUri(uri)
             if (photo != null) {
